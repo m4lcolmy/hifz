@@ -35,6 +35,11 @@ class MushafView(QGraphicsView):
 
         self.current_page_num = None
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.scene.sceneRect().isValid():
+            self.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
     def load_dataset_page(self, dataset_dir: str, page_num: int):
         self.scene.clear()
         self.word_to_box = {}
@@ -147,7 +152,7 @@ class MushafView(QGraphicsView):
                 current_idx += 1
                 
         # 3. Align with quran.json
-        import json, re
+        import json, re, difflib
         def normalize(t):
             t = t.replace('ـ', '')
             t = re.sub(r'[أإآٱ]', 'ا', t)
@@ -159,6 +164,7 @@ class MushafView(QGraphicsView):
             t = re.sub(r'[^\w\s]', '', t)
             t = re.sub(r'\d+', '', t)
             t = re.sub(r'[٠-٩]', '', t)
+            t = t.replace('ا', '')
             return t.strip()
             
         quran_json_path = os.path.join(os.path.dirname(dataset_dir), "quran.json")
@@ -169,39 +175,44 @@ class MushafView(QGraphicsView):
             with open(data_json_path, 'r', encoding='utf-8') as f:
                 page_ayahs = json.load(f).get("ayahs", [])
                 
-            f_idx = 0
+            q_words_flat = []
+            q_words_meta = []
             for ayah_meta in page_ayahs:
                 s = ayah_meta["sura"]
                 a = ayah_meta["ayah"]
-                q_words = []
                 for sura_node in quran_data:
                     if sura_node["id"] == s:
                         for verse in sura_node["verses"]:
                             if verse["id"] == a:
-                                q_words = verse["text"].split()
+                                for idx, qw in enumerate(verse["text"].split()):
+                                    q_words_flat.append(qw)
+                                    q_words_meta.append((s, a, idx))
                                 break
                         break
                         
-                for q_w_idx, q_w in enumerate(q_words):
-                    norm_q_w = normalize(q_w)
-                    boxes = []
-                    matched_text = ""
-                    while f_idx < len(flat_tokens):
-                        f_t = flat_tokens[f_idx]
-                        norm_f_t = normalize(f_t)
-                        boxes.append(f_idx)
-                        f_idx += 1
-                        matched_text += norm_f_t
-                        if matched_text == norm_q_w and norm_q_w != "":
-                            break
-                    while f_idx < len(flat_tokens):
-                        norm_next = normalize(flat_tokens[f_idx])
-                        if norm_next == "":
-                            boxes.append(f_idx)
-                            f_idx += 1
-                        else:
-                            break
-                    self.word_to_box[(s, a, q_w_idx)] = boxes
+            q_norm = [normalize(w) for w in q_words_flat]
+            f_norm = [normalize(w) for w in flat_tokens]
+            
+            for meta in q_words_meta:
+                self.word_to_box[meta] = []
+                
+            sm = difflib.SequenceMatcher(None, q_norm, f_norm)
+            for op, i1, i2, j1, j2 in sm.get_opcodes():
+                if op == 'equal' or op == 'replace':
+                    for k in range(max(i2 - i1, j2 - j1)):
+                        qi = i1 + k if i1 + k < i2 else i2 - 1
+                        fi = j1 + k if j1 + k < j2 else j2 - 1
+                        meta = q_words_meta[qi]
+                        if fi not in self.word_to_box[meta]:
+                            self.word_to_box[meta].append(fi)
+                elif op == 'insert':
+                    for fi in range(j1, j2):
+                        if i1 > 0:
+                            meta = q_words_meta[i1 - 1]
+                            self.word_to_box[meta].append(fi)
+                        elif i1 < len(q_words_meta):
+                            meta = q_words_meta[i1]
+                            self.word_to_box[meta].append(fi)
         except Exception as e:
             print(f"Error mapping words: {e}")
 
@@ -210,8 +221,14 @@ class MushafView(QGraphicsView):
         for idx, rect in flat_boxes.items():
             item = self.scene.addRect(rect)
             item.setPen(Qt.GlobalColor.transparent)
-            # Default to fully opaque white to completely hide the text underneath
-            item.setBrush(QColor(255, 255, 255, 255))
+            
+            f_t = flat_tokens[idx]
+            # If it's an ayah marker or a waqf sign, don't hide it with a white mask initially
+            if re.match(r'^﴿.*?﴾$', f_t) or f_t in ['ۖ', 'ۗ', 'ۘ', 'ۙ', 'ۚ', 'ۛ', '۩', '۞', 'س', 'ع', 'ج', 'م', 'قلي', 'صلي', 'لا', '∴']:
+                item.setBrush(QColor(255, 255, 255, 0)) # Transparent
+            else:
+                item.setBrush(QColor(255, 255, 255, 255)) # Opaque white
+                
             self.box_items[idx] = item
 
     def update_recitation(self, surah: int, ayah: int, word_index: int, is_correct: bool):

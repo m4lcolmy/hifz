@@ -1,17 +1,16 @@
 """Quran text search and word-by-word comparison engine.
 
-Loads the full Quran text (Uthmani script with diacritics) and provides:
+Loads the full Quran text and provides:
   - Free-mode verse detection from transcription
   - Word-by-word comparison with diacritics
 """
 
 import json
 import difflib
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarteel.arabic import normalize, strip_diacritics
+from tarteel.arabic import normalize
 
 # ── Data path ──────────────────────────────────────────────────────────
 _DATA_DIR = Path(__file__).parent / "data"
@@ -24,6 +23,9 @@ class WordResult:
     recited: str          # what the user said
     reference: str        # what the Quran says (may be empty for extra words)
     is_correct: bool      # True = exact match including diacritics
+    surah_id: int | None = None
+    ayah_id: int | None = None
+    reference_index: int | None = None  # word position inside the ayah
 
 
 @dataclass
@@ -41,8 +43,8 @@ class QuranIndex:
 
     def __init__(self):
         self._surahs: list[dict] = []
-        # Flat word list: [(normalized_word, original_word, surah_idx, ayah_idx)]
-        self._flat: list[tuple[str, str, int, int]] = []
+        # Flat word list: [(normalized_word, original_word, surah_idx, ayah_idx, word_idx)]
+        self._flat: list[tuple[str, str, int, int, int]] = []
         # N-gram index: normalized bigram → list of positions in _flat
         self._bigrams: dict[tuple[str, str], list[int]] = {}
 
@@ -59,10 +61,10 @@ class QuranIndex:
             for verse in surah["verses"]:
                 a_id = verse["id"]
                 words = verse["text"].split()
-                for w in words:
+                for word_idx, w in enumerate(words):
                     norm = normalize(w)
                     if norm:
-                        self._flat.append((norm, w, s_id, a_id))
+                        self._flat.append((norm, w, s_id, a_id, word_idx))
 
         # Build bigram index for fast lookup
         for i in range(len(self._flat) - 1):
@@ -91,62 +93,86 @@ class QuranIndex:
         if best_pos is None:
             return None
 
-        # Get the matched verse
-        _, _, s_id, a_id = self._flat[best_pos]
-        surah = self._surahs[s_id - 1]
-        verse = surah["verses"][a_id - 1]
-
-        # Determine where in the verse the recitation starts
-        ref_words_full = verse["text"].split()
-        ref_norm_full = [normalize(w) for w in ref_words_full]
-
-        # Find the starting offset within the verse
-        start_offset = 0
-        if trans_norm and ref_norm_full:
-            for i, rn in enumerate(ref_norm_full):
-                if rn == trans_norm[0]:
-                    start_offset = i
-                    break
-
-        # Trim ref to only the portion the user recited (+1 for tolerance)
-        end_offset = min(start_offset + len(trans_words) + 1, len(ref_words_full))
-        ref_words = ref_words_full[start_offset:end_offset]
+        # Gather reference words across ayahs
+        num_ref_words = len(trans_words) + 5
+        end_pos = min(len(self._flat), best_pos + num_ref_words)
+        
+        ref_data = []
+        for i in range(best_pos, end_pos):
+            _, w, s_id, a_id, w_idx = self._flat[i]
+            ref_data.append((w, s_id, a_id, w_idx))
 
         # Word-by-word comparison
-        words = self._compare_words(trans_words, ref_words)
+        words = self._compare_words(trans_words, ref_data)
+
+        # Base verse match info
+        _, _, start_s_id, start_a_id, start_offset = self._flat[best_pos]
+        surah = self._surahs[start_s_id - 1]
 
         return VerseMatch(
-            surah_id=s_id,
+            surah_id=start_s_id,
             surah_name=surah["name"],
-            ayah_id=a_id,
+            ayah_id=start_a_id,
             start_offset=start_offset,
             words=words,
         )
 
     def _find_best_position(self, trans_norm: list[str], context_surah: int | None = None, context_ayah: int | None = None) -> int | None:
         """Find the position in the flat word list that best matches."""
-        candidates: list[tuple[int, int]] = []  # (position, score)
+        if not hasattr(self, '_word_index'):
+            self._word_index = {}
+            for i, (norm, _, _, _, _) in enumerate(self._flat):
+                self._word_index.setdefault(norm, []).append(i)
 
-        # Try bigram lookup with first words
-        for start in range(min(3, len(trans_norm) - 1)):
-            key = (trans_norm[start], trans_norm[start + 1])
-            if key in self._bigrams:
-                for pos in self._bigrams[key]:
-                    adjusted = pos - start
-                    if adjusted >= 0:
-                        score = self._score_match(trans_norm, adjusted)
-                        candidates.append((adjusted, score))
+        candidate_positions = set()
+        
+        # Pick the most "rare" words in the transcription to use as anchors
+        word_rarity = []
+        for i, tw in enumerate(trans_norm):
+            if tw in self._word_index:
+                word_rarity.append((len(self._word_index[tw]), i, tw))
+        
+        word_rarity.sort(key=lambda x: x[0])
+        
+        # Take the top 3 rarest words as anchors
+        anchors = word_rarity[:3]
+        
+        for count, i, tw in anchors:
+            for pos in self._word_index[tw]:
+                start_pos = max(0, pos - i)
+                candidate_positions.add(start_pos)
+                candidate_positions.add(max(0, start_pos - 1))
+                candidate_positions.add(max(0, start_pos - 2))
+                candidate_positions.add(min(len(self._flat) - 1, start_pos + 1))
+                candidate_positions.add(min(len(self._flat) - 1, start_pos + 2))
 
-        # If no bigram match, try single-word fallback
-        if not candidates:
-            first = trans_norm[0]
-            for i, (norm, _, _, _) in enumerate(self._flat):
-                if norm == first:
-                    score = self._score_match(trans_norm, i)
-                    if score >= 2:
-                        candidates.append((i, score))
+        if not candidate_positions:
+            return None
 
-        if not candidates:
+        candidates = {}
+        for pos in candidate_positions:
+            end_pos = min(len(self._flat), pos + len(trans_norm) + 3)
+            window = [x[0] for x in self._flat[pos:end_pos]]
+            sm = difflib.SequenceMatcher(None, trans_norm, window)
+            blocks = sm.get_matching_blocks()
+            if blocks and blocks[0].size > 0:
+                # blocks[0].b is the offset in the window where the match actually starts
+                # blocks[0].a is the offset in trans_norm where the match starts
+                # If the user skipped the first word (a > 0), the actual start in the Quran should correspond to where trans_norm[0] WOULD be.
+                # So actual_start = pos + blocks[0].b - blocks[0].a
+                actual_start = pos + blocks[0].b - blocks[0].a
+                actual_start = max(0, actual_start)
+                
+                match_count = sum(b.size for b in blocks)
+                if actual_start not in candidates or match_count > candidates[actual_start]:
+                    candidates[actual_start] = match_count
+
+        candidates_list = []
+        for pos, score in candidates.items():
+            if score >= min(2.0, len(trans_norm) * 0.4):
+                candidates_list.append((pos, score))
+
+        if not candidates_list:
             return None
 
         # Prioritize candidates near context
@@ -154,8 +180,8 @@ class QuranIndex:
             best_candidate = None
             best_score = -1
             
-            for pos, score in candidates:
-                _, _, s_id, a_id = self._flat[pos]
+            for pos, score in candidates_list:
+                _, _, s_id, a_id, _ = self._flat[pos]
                 
                 is_near = False
                 if s_id == context_surah and context_ayah <= a_id <= context_ayah + 5:
@@ -173,35 +199,35 @@ class QuranIndex:
                 return best_candidate
 
         # Default behavior: Return position with highest score
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        return candidates[0][0]
+        candidates_list.sort(key=lambda x: x[1], reverse=True)
+        return candidates_list[0][0]
 
-    def _score_match(self, trans_norm: list[str], start_pos: int) -> int:
-        """Score how many consecutive words match from start_pos."""
-        score = 0
-        for i, tw in enumerate(trans_norm):
-            pos = start_pos + i
-            if pos >= len(self._flat):
-                break
-            if self._flat[pos][0] == tw:
-                score += 1
-        return score
+    def _score_match(self, trans_norm: list[str], start_pos: int) -> float:
+        """Score using SequenceMatcher for robust alignment (handles skipped/extra words)."""
+        end_pos = min(len(self._flat), start_pos + len(trans_norm) + 3)
+        window = [x[0] for x in self._flat[start_pos:end_pos]]
+        sm = difflib.SequenceMatcher(None, trans_norm, window)
+        return sum(block.size for block in sm.get_matching_blocks())
 
     def _compare_words(
-        self, trans_words: list[str], ref_words: list[str]
+        self, trans_words: list[str], ref_data: list[tuple[str, int, int, int]]
     ) -> list[WordResult]:
         """Word-by-word comparison using diacritics.
 
         Uses SequenceMatcher on normalized words for alignment,
         then compares original words with diacritics for correctness.
+        Trailing reference-only words are ignored so stopping mid-ayah
+        is not treated as a mistake.
         """
+        ref_words = [x[0] for x in ref_data]
         trans_norm = [normalize(w) for w in trans_words]
         ref_norm = [normalize(w) for w in ref_words]
 
         matcher = difflib.SequenceMatcher(None, trans_norm, ref_norm)
         results: list[WordResult] = []
+        opcodes = list(matcher.get_opcodes())
 
-        for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        for op, i1, i2, j1, j2 in opcodes:
             if op == "equal":
                 for i, j in zip(range(i1, i2), range(j1, j2)):
                     # Normalized match — now check with diacritics
@@ -210,6 +236,9 @@ class QuranIndex:
                         recited=trans_words[i],
                         reference=ref_words[j],
                         is_correct=correct,
+                        surah_id=ref_data[j][1],
+                        ayah_id=ref_data[j][2],
+                        reference_index=ref_data[j][3],
                     ))
             elif op == "replace":
                 # Pair up replaced words
@@ -220,6 +249,9 @@ class QuranIndex:
                         recited=trans_words[ti] if ti is not None else "",
                         reference=ref_words[tj] if tj is not None else "",
                         is_correct=False,
+                        surah_id=ref_data[tj][1] if tj is not None else None,
+                        ayah_id=ref_data[tj][2] if tj is not None else None,
+                        reference_index=ref_data[tj][3] if tj is not None else None,
                     ))
             elif op == "delete":
                 # Extra words the user said (not in Quran)
@@ -228,6 +260,9 @@ class QuranIndex:
                         recited=trans_words[i],
                         reference="",
                         is_correct=False,
+                        surah_id=None,
+                        ayah_id=None,
+                        reference_index=None,
                     ))
             elif op == "insert":
                 # Words the user missed
@@ -236,7 +271,16 @@ class QuranIndex:
                         recited="",
                         reference=ref_words[j],
                         is_correct=False,
+                        surah_id=ref_data[j][1],
+                        ayah_id=ref_data[j][2],
+                        reference_index=ref_data[j][3],
                     ))
+
+        # Remove trailing missed words (reference words with no recited counterpart).
+        # We only care about words the user actually recited; if they stop, we shouldn't
+        # mark the rest of the buffer as "missed", since they'll say them in the next chunk.
+        while results and not results[-1].recited:
+            results.pop()
 
         return results
 
@@ -295,5 +339,11 @@ class QuranIndex:
         t = re.sub("[\u06DC\u06DF]", "", t)
         # Canonicalize combining character order (fixes fathah/shadda ordering)
         t = unicodedata.normalize("NFC", t)
+        
+        # Strip Shadda and Sukun to ignore Tajweed-specific orthography differences
+        # Whisper often misses Shaddas or hallucinates Sukuns, and Tajweed rules 
+        # add/remove them dynamically. We still verify the core vowels.
+        t = t.replace("\u0651", "") # Shadda
+        t = t.replace("\u0652", "") # Sukun
+        
         return t
-

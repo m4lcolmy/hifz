@@ -6,7 +6,6 @@ Two levels of normalization:
 """
 
 import re
-import unicodedata
 
 # ── Arabic diacritics (tashkeel) ───────────────────────────────────────
 # Standard diacritics
@@ -76,7 +75,7 @@ def normalize(text: str) -> str:
 
     - Strips all diacritics
     - Normalizes alef variants (أ إ آ ٱ → ا)
-    - Removes long-vowel alef (mater lectionis) so Uthmani ٰ and Imla'i ا match
+    - Normalizes a few common orthographic variants
     - Removes tatweel (kashida)
     - Removes Quranic ornaments (۞ etc.)
     """
@@ -90,10 +89,5 @@ def normalize(text: str) -> str:
     t = t.replace(_END_OF_AYAH, "")
     # Normalize teh marbuta to heh for matching
     t = t.replace("\u0629", "\u0647")  # ة → ه
-    # Remove alef that acts as long-vowel marker between consonants
-    # This makes العالمين and العلمين (from dagger alef) equivalent
-    # Pattern: consonant + alef + consonant → remove the alef
-    _CONSONANT = r"[\u0628-\u064A]"  # ba through ya
-    t = re.sub(f"({_CONSONANT})\u0627({_CONSONANT})", r"\1\2", t)
+    t = t.replace("\u0649", "\u064A")  # ى → ي
     return t.strip()
-

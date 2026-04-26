@@ -276,6 +276,9 @@ class MainWindow(QMainWindow):
         """Display transcription result with Quran verification coloring."""
         text = result["text"]
         match = result["match"]
+        prev_surah = self._last_surah
+        prev_ayah = self._last_ayah
+        prev_word_index = self._last_word_index
 
         if match is None:
             # No Quran match — show plain text
@@ -318,46 +321,52 @@ class MainWindow(QMainWindow):
 
         self.output_text.append(ref_html + words_html)
 
+        # Determine the first valid word to handle gaps
+        first_valid_word = next((w for w in match.words if w.surah_id is not None), None)
+        
         # Load Mushaf page if needed
-        page_num = self._page_map.get((match.surah_id, match.ayah_id))
-        if page_num and page_num != self.mushaf_view.current_page_num:
-            dataset_path = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset")
-            self.mushaf_view.load_dataset_page(dataset_path, page_num)
+        if first_valid_word:
+            page_num = self._page_map.get((first_valid_word.surah_id, first_valid_word.ayah_id))
+            if page_num and page_num != self.mushaf_view.current_page_num:
+                dataset_path = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset")
+                self.mushaf_view.load_dataset_page(dataset_path, page_num)
             
-        # Detect and highlight skipped words within the same ayah
-        if self._last_surah == match.surah_id and self._last_ayah == match.ayah_id:
-            expected_next = self._last_word_index + 1
-            if match.start_offset > expected_next:
-                for missed_idx in range(expected_next, match.start_offset):
-                    self.mushaf_view.update_recitation(match.surah_id, match.ayah_id, missed_idx, False)
-                    
-        # Update state trackers
-        self._last_surah = match.surah_id
-        self._last_ayah = match.ayah_id
-        max_word_index = match.start_offset - 1
-            
-        # Highlight words on Mushaf View
-        for i, w in enumerate(match.words):
-            word_idx = match.start_offset + i
-            max_word_index = max(max_word_index, word_idx)
-            
+            # Detect and highlight skipped words from previous chunk within the same ayah
+            if prev_surah == first_valid_word.surah_id and prev_ayah == first_valid_word.ayah_id:
+                expected_next = prev_word_index + 1
+                if first_valid_word.reference_index > expected_next:
+                    for missed_idx in range(expected_next, first_valid_word.reference_index):
+                        self.mushaf_view.update_recitation(first_valid_word.surah_id, first_valid_word.ayah_id, missed_idx, False)
+
+        # Highlight words on Mushaf View and track state
+        for w in match.words:
+            if w.surah_id is None or w.ayah_id is None or w.reference_index is None:
+                continue
+
+            # Load new page if recitation crosses a page boundary
+            page_num = self._page_map.get((w.surah_id, w.ayah_id))
+            if page_num and page_num != self.mushaf_view.current_page_num:
+                dataset_path = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset")
+                self.mushaf_view.load_dataset_page(dataset_path, page_num)
+
             if w.recited and w.is_correct:
                 status = True
-            elif w.recited and not w.is_correct:
-                status = False
-            elif not w.recited and w.reference:
+            elif w.reference:
                 status = False
             else:
                 continue
                 
             self.mushaf_view.update_recitation(
-                match.surah_id, 
-                match.ayah_id, 
-                word_idx, 
+                w.surah_id, 
+                w.ayah_id, 
+                w.reference_index, 
                 status
             )
-            
-        self._last_word_index = max(self._last_word_index, max_word_index) if self._last_ayah == match.ayah_id else max_word_index
+
+            # Keep tracking state
+            self._last_surah = w.surah_id
+            self._last_ayah = w.ayah_id
+            self._last_word_index = w.reference_index
 
     def _on_worker_error(self, msg: str):
         self._set_status(f"Error: {msg}", "error")
