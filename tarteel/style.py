@@ -2,23 +2,24 @@
 
 from PyQt6.QtGui import QFont
 
-# ── Color palette (Zinc dark theme) ────────────────────────────────────
-BG_PRIMARY = "#18181B"       # deep zinc background
-BG_SURFACE = "#27272A"       # elements: text area, status bar
-BORDER = "#3F3F46"           # subtle 1px borders
-TEXT_PRIMARY = "#F4F4F5"     # off-white text
-TEXT_SECONDARY = "#A1A1AA"   # muted zinc text
-ACCENT = "#3B82F6"           # modern blue
-ACCENT_HOVER = "#2563EB"    # blue hover
-ACCENT_PRESSED = "#1D4ED8"  # blue pressed
-RECORD_ACTIVE = "#EF4444"   # red for recording
-RECORD_HOVER = "#DC2626"    # red hover
+# ── Color palette (Light Modern Theme) ────────────────────────────────────
+BG_PRIMARY = "#FFFFFF"       # white background
+BG_SURFACE = "#F9FAFB"       # soft gray for right panel
+BORDER = "#E5E7EB"           # subtle 1px borders
+TEXT_PRIMARY = "#000000"     # pure black text
+TEXT_SECONDARY = "#6B7280"   # muted gray text
+ACCENT = "#10B981"           # emerald green (from sketch)
+ACCENT_HOVER = "#059669"     # green hover
+ACCENT_PRESSED = "#047857"   # green pressed
+RECORD_ACTIVE = "#10B981"    # emerald green for recording
+RECORD_HOVER = "#059669"     # darker green hover
+RECORD_ERROR = "#EF4444"     # red for error state
 
 # ── Quran verification colors ─────────────────────────────────────────
 CORRECT_COLOR = "#10B981"    # emerald green — correct recitation
 INCORRECT_COLOR = "#EF4444"  # red — wrong word or diacritics
-MISSED_COLOR = "#FBBF24"     # amber — word skipped by reciter
-VERSE_REF_COLOR = "#6B7280"  # gray — surah:ayah label
+MISSED_COLOR = "#F59E0B"     # amber — word skipped by reciter
+VERSE_REF_COLOR = "#9CA3AF"  # light gray — surah:ayah label
 
 
 STYLESHEET = f"""
@@ -30,67 +31,66 @@ STYLESHEET = f"""
         background-color: {BG_PRIMARY};
     }}
 
-    QLabel#title {{
-        color: {TEXT_PRIMARY};
-        font-size: 18px;
-        font-weight: 600;
-        padding: 4px 0;
+    QSplitter::handle {{
+        background-color: {TEXT_PRIMARY};
+        width: 2px;
+    }}
+
+    /* The Magic Pill */
+    QWidget#pill {{
+        background-color: {BG_PRIMARY};
+        border: 1px solid {BORDER};
+        border-radius: 24px;
     }}
 
     QLabel#status {{
-        color: {TEXT_SECONDARY};
+        color: {TEXT_PRIMARY};
         font-size: 13px;
-        padding: 8px 14px;
-        background-color: {BG_SURFACE};
-        border: 1px solid {BORDER};
-        border-radius: 6px;
+        font-weight: 500;
+        padding-left: 8px;
+        background-color: transparent;
+        border: none;
     }}
 
     QLabel#status[state="recording"] {{
         color: {RECORD_ACTIVE};
-        border-color: #7F1D1D;
-        background-color: #1C1012;
     }}
 
     QLabel#status[state="transcribing"] {{
         color: {ACCENT};
-        border-color: #1E3A5F;
-        background-color: #111827;
     }}
 
     QLabel#status[state="error"] {{
-        color: #F87171;
-        border-color: #7F1D1D;
-        background-color: #1C1012;
+        color: {RECORD_ERROR};
     }}
 
     QPushButton#record {{
-        background-color: {ACCENT};
-        color: white;
+        background-color: transparent;
+        color: {TEXT_PRIMARY};
         font-size: 14px;
-        font-weight: 600;
-        padding: 12px 16px;
-        border: none;
-        border-radius: 8px;
-        min-height: 20px;
+        font-weight: 700;
+        border: 1.5px solid {TEXT_PRIMARY};
+        border-radius: 18px;
+        padding-top: 1px; /* Center the icon */
     }}
 
     QPushButton#record:hover {{
-        background-color: {ACCENT_HOVER};
+        background-color: #F3F4F6;
     }}
 
     QPushButton#record:pressed {{
-        background-color: {ACCENT_PRESSED};
+        background-color: #E5E7EB;
     }}
 
     QPushButton#record:disabled {{
-        background-color: {BG_SURFACE};
         color: {TEXT_SECONDARY};
-        border: 1px solid {BORDER};
+        border-color: {TEXT_SECONDARY};
     }}
 
     QPushButton#record[recording="true"] {{
+        color: white;
         background-color: {RECORD_ACTIVE};
+        border-color: {RECORD_ACTIVE};
     }}
 
     QPushButton#record[recording="true"]:hover {{
@@ -98,18 +98,12 @@ STYLESHEET = f"""
     }}
 
     QTextEdit#output {{
-        background-color: {BG_SURFACE};
+        background-color: {BG_PRIMARY};
         color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER};
-        border-radius: 8px;
-        padding: 14px;
-        selection-background-color: #1E3A5F;
-    }}
-
-    QFrame#divider {{
-        background-color: {BORDER};
-        max-height: 1px;
         border: none;
+        padding: 32px;
+        selection-background-color: #D1FAE5;
+        selection-color: #065F46;
     }}
 """
 

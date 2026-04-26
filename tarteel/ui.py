@@ -9,15 +9,17 @@ Flow:
 """
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout,
-    QPushButton, QLabel, QTextEdit, QFrame, QSplitter
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLabel, QTextEdit, QSplitter,
+    QGraphicsDropShadowEffect
 )
+from PyQt6.QtGui import QColor
 import os
 import json
-from PyQt6.QtCore import Qt, QByteArray, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtMultimedia import QAudioSource
 
-from tarteel.config import SAMPLE_RATE
+
 from tarteel.style import (
     arabic_font, CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR, VERSE_REF_COLOR,
 )
@@ -87,35 +89,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(28, 24, 28, 28)
-        layout.setSpacing(16)
-
-        # Title
-        title = QLabel("Tarteel Whisper")
-        title.setObjectName("title")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-
-        # Divider
-        divider = QFrame()
-        divider.setObjectName("divider")
-        divider.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(divider)
-
-        # Status
-        self.status_label = QLabel("Loading model…")
-        self.status_label.setObjectName("status")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.status_label)
-
-        # Listen button
-        self.listen_btn = QPushButton("● Start Listening")
-        self.listen_btn.setObjectName("record")
-        self.listen_btn.setEnabled(False)
-        self.listen_btn.setCheckable(True)
-        self.listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.listen_btn.clicked.connect(self._toggle_listening)
-        layout.addWidget(self.listen_btn)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # Splitter for Mushaf View and Text Output (Side-by-side)
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -134,11 +109,44 @@ class MainWindow(QMainWindow):
         self.output_text.setObjectName("output")
         self.output_text.setReadOnly(True)
         self.output_text.setFont(arabic_font())
-        self.output_text.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.output_text.setPlaceholderText("Listening...")
         splitter.addWidget(self.output_text)
         
         splitter.setSizes([600, 400])
+
+        # Floating Pill Container (Minimalist)
+        self.pill = QWidget(central)
+        self.pill.setObjectName("pill")
+        
+        # Professional Drop Shadow
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(25)
+        shadow.setXOffset(0)
+        shadow.setYOffset(8)
+        shadow.setColor(QColor(0, 0, 0, 20))
+        self.pill.setGraphicsEffect(shadow)
+
+        pill_layout = QHBoxLayout(self.pill)
+        pill_layout.setContentsMargins(16, 6, 6, 6)
+        pill_layout.setSpacing(12)
+
+        # Status
+        self.status_label = QLabel("Loading model…")
+        self.status_label.setObjectName("status")
+        pill_layout.addWidget(self.status_label)
+
+        # Listen button
+        self.listen_btn = QPushButton("▶")
+        self.listen_btn.setObjectName("record")
+        self.listen_btn.setEnabled(False)
+        self.listen_btn.setCheckable(True)
+        self.listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.listen_btn.clicked.connect(self._toggle_listening)
+        self.listen_btn.setFixedSize(36, 36)
+        pill_layout.addWidget(self.listen_btn)
+        
+        # Ensure pill stays on top
+        self.pill.raise_()
 
     # ── Status helpers ─────────────────────────────────────────────────
 
@@ -223,13 +231,13 @@ class MainWindow(QMainWindow):
             return
 
         self._listening = True
-        self.listen_btn.setText("■ Stop")
+        self.listen_btn.setText("■")
         self._set_btn_style(True)
         self._set_status("Listening…", "recording")
 
     def _stop_listening(self):
         self._listening = False
-        self.listen_btn.setText("● Start Listening")
+        self.listen_btn.setText("▶")
         self._set_btn_style(False)
 
         # Stop mic
@@ -281,13 +289,13 @@ class MainWindow(QMainWindow):
         prev_word_index = self._last_word_index
 
         if match is None:
-            # No Quran match — show plain text
-            self.output_text.append(text)
+            # No Quran match — show plain text (likely Arabic)
+            self.output_text.append(f'<div dir="rtl" style="text-align:right;">{text}</div>')
             return
 
         # Build HTML for the verse reference
         ref_html = (
-            f'<div style="text-align:right; margin-bottom:4px;">'
+            f'<div dir="rtl" style="text-align:right; margin-bottom:4px;">'
             f'<span style="color:{VERSE_REF_COLOR}; font-size:12px;">'
             f'[{match.surah_name} : {match.ayah_id}]'
             f'</span></div>'
@@ -371,7 +379,20 @@ class MainWindow(QMainWindow):
     def _on_worker_error(self, msg: str):
         self._set_status(f"Error: {msg}", "error")
 
-    # ── Cleanup ────────────────────────────────────────────────────────
+    # ── Cleanup & Resize ───────────────────────────────────────────────
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'pill'):
+            # Minimalist pill size
+            pill_width = 240
+            pill_height = 48
+            self.pill.setGeometry(
+                (self.width() - pill_width) // 2,
+                self.height() - pill_height - 40,
+                pill_width,
+                pill_height
+            )
 
     def closeEvent(self, event):
         if self._listening:

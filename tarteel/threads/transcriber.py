@@ -11,7 +11,7 @@ comparison result (VerseMatch) instead of plain text.
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
-from tarteel.config import SAMPLE_RATE, DEVICE, USE_FP16, MATCH_MIN_WORDS
+from tarteel.config import MATCH_MIN_WORDS
 
 
 class TranscriberWorker(QObject):
