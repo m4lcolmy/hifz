@@ -1,13 +1,12 @@
 """Surah/Ayah → Mushaf page number mapping.
 
-Reads the per-page JSON metadata from the Quran Dataset to build
-a fast (surah, ayah) → page_number lookup table.
+Reads the QCF4 per-page JSON metadata to build a fast
+(surah, ayah) → page_number lookup table.
 """
 
 import json
-import os
 
-from src.config import DATASET_DIR
+from src.config import QCF_PAGES_DIR, DATASET_DIR
 
 
 class PageMap:
@@ -18,7 +17,31 @@ class PageMap:
         self._build()
 
     def _build(self):
-        """Scan the dataset's per-page JSON files to build the lookup table."""
+        """Build lookup table from QCF page JSONs (primary) or dataset fallback."""
+        # Try QCF pages first
+        if QCF_PAGES_DIR.exists():
+            self._build_from_qcf()
+        else:
+            self._build_from_dataset()
+
+    def _build_from_qcf(self):
+        """Scan QCF page JSONs to build the lookup table."""
+        for i in range(1, 605):
+            path = QCF_PAGES_DIR / f"{i:03d}.json"
+            if not path.exists():
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for surah in data.get("surahs", []):
+                    s_id = surah["id"]
+                    for ayah in range(surah["verse_start"], surah["verse_end"] + 1):
+                        self._map[(s_id, ayah)] = i
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Warning: Error reading QCF page {i}: {e}")
+
+    def _build_from_dataset(self):
+        """Fallback: scan dataset's per-page JSON files."""
         data_dir = DATASET_DIR / "Quran_pages_data_json"
         if not data_dir.exists():
             print(f"Warning: Dataset not found at {data_dir}")

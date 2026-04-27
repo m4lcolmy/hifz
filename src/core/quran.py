@@ -57,6 +57,9 @@ class QuranIndex:
         # Single-word index for fallback
         self._word_index: dict[str, list[int]] = {}
 
+        # Position map: (surah, ayah, word_idx) -> flat_pos
+        self._pos_map: dict[tuple[int, int, int], int] = {}
+
         self._load()
 
     def _load(self):
@@ -76,6 +79,7 @@ class QuranIndex:
                         pos = len(self._flat)
                         self._flat.append((norm, w, s_id, a_id, word_idx))
                         self._word_index.setdefault(norm, []).append(pos)
+                        self._pos_map[(s_id, a_id, word_idx)] = pos
 
         # Build N-gram inverted index for discovery
         for n in DISCOVERY_NGRAM_SIZES:
@@ -225,14 +229,11 @@ class QuranIndex:
     def _find_context_pos(self, surah: int, ayah: int, word_index: int) -> int | None:
         """Find the flat index for a given surah/ayah/word position.
 
-        Uses word_index to quickly narrow down, then linear scan.
         Returns the position of the NEXT expected word (context + 1).
         """
-        # Get the first word of this ayah via word_index lookup
-        for i in range(len(self._flat)):
-            s, a, w = self._flat[i][2], self._flat[i][3], self._flat[i][4]
-            if s == surah and a == ayah and w == word_index:
-                return i + 1  # Next expected word
+        pos = self._pos_map.get((surah, ayah, word_index))
+        if pos is not None:
+            return pos + 1
         return None
 
     # ── Shared helpers ─────────────────────────────────────────────────

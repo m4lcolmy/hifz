@@ -98,10 +98,11 @@ STYLESHEET = f"""
     }}
 
     QTextEdit#output {{
-        background-color: {BG_PRIMARY};
+        background-color: {BG_SURFACE};
         color: {TEXT_PRIMARY};
         border: none;
-        padding: 32px;
+        padding: 40px;
+        line-height: 1.6;
         selection-background-color: #D1FAE5;
         selection-color: #065F46;
     }}

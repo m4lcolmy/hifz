@@ -8,6 +8,15 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATASET_DIR = DATA_DIR / "Quran_Dataset"
 QURAN_JSON = DATA_DIR / "quran.json"
 
+# ── QCF Assets ─────────────────────────────────────────────────────────
+QCF_ASSETS_DIR = DATA_DIR / "qcf_assets"
+QCF_FONTS_DIR = QCF_ASSETS_DIR / "fonts"
+QCF_PAGES_DIR = QCF_ASSETS_DIR / "pages"
+QCF_FONT_SIZE = 28          # pt — tunable glyph size
+QCF_PAGE_LINES = 8          # lines per standard Mushaf page
+QCF_LINE_SPACING = 1.4      # multiplier for vertical line spacing
+QCF_WORD_SPACING = 2        # px gap between glyphs on a line
+
 # ── Model ──────────────────────────────────────────────────────────────
 MODEL_DIR = str(PROJECT_ROOT / "models")
 DEVICE = "cpu"
