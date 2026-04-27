@@ -1,111 +1,71 @@
-"""Voice Activity Detection — automatic speech chunking from a PCM stream.
+"""Voice Activity Detection — continuous sliding window from a PCM stream.
 
-Uses WebRTC VAD to split continuous audio into speech segments.
-Feed raw 16 kHz Int16 PCM bytes via feed(); complete speech chunks
-are returned when enough trailing silence is detected.
+Uses WebRTC VAD to ensure a window has speech before emitting.
+Feed raw 16 kHz Int16 PCM bytes via feed(); sliding windows are returned
+continuously.
 """
 
-import collections
 import webrtcvad
 
 from src.config import (
     SAMPLE_RATE, VAD_AGGRESSIVENESS, VAD_FRAME_MS,
-    SILENCE_THRESHOLD_MS, MIN_SPEECH_MS, PRE_SPEECH_MS,
 )
 
 
-class ChunkDetector:
-    """Accumulates PCM frames and emits complete speech segments."""
+class SlidingWindowBuffer:
+    """Accumulates PCM frames and emits overlapping sliding windows continuously."""
 
     # Bytes per VAD frame (16-bit = 2 bytes per sample)
     FRAME_BYTES = (SAMPLE_RATE * VAD_FRAME_MS // 1000) * 2
 
-    def __init__(self):
+    def __init__(self, window_ms=3000, step_ms=300):
         self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
-        self._silence_limit = SILENCE_THRESHOLD_MS // VAD_FRAME_MS
-        self._min_frames = MIN_SPEECH_MS // VAD_FRAME_MS
-        self._pre_count = PRE_SPEECH_MS // VAD_FRAME_MS
-
-        self._raw = bytearray()                                    # unprocessed bytes
-        self._pre_roll = collections.deque(maxlen=self._pre_count) # recent silence frames
-        self._speech = bytearray()                                 # current speech segment
-        self._in_speech = False
-        self._speech_frames = 0
-        self._silence_frames = 0
-
-    @property
-    def is_speaking(self) -> bool:
-        return self._in_speech
-
-    # ── Public API ─────────────────────────────────────────────────────
+        self.window_bytes = (SAMPLE_RATE * window_ms // 1000) * 2
+        self.step_bytes = (SAMPLE_RATE * step_ms // 1000) * 2
+        self._buffer = bytearray()
 
     def feed(self, pcm: bytes) -> list[bytes]:
-        """Feed raw PCM bytes. Returns list of finalized speech chunks (may be empty)."""
-        self._raw.extend(pcm)
+        """Feed raw PCM bytes. Returns list of sliding windows if enough data accumulated."""
+        self._buffer.extend(pcm)
         chunks: list[bytes] = []
 
-        while len(self._raw) >= self.FRAME_BYTES:
-            frame = bytes(self._raw[:self.FRAME_BYTES])
-            del self._raw[:self.FRAME_BYTES]
+        while len(self._buffer) >= self.window_bytes:
+            window_data = bytes(self._buffer[:self.window_bytes])
+            
+            # Simple VAD check: if any 30ms frame is speech, emit the window
+            has_speech = False
+            for i in range(0, len(window_data), self.FRAME_BYTES):
+                frame = window_data[i:i + self.FRAME_BYTES]
+                if len(frame) == self.FRAME_BYTES and self._vad.is_speech(frame, SAMPLE_RATE):
+                    has_speech = True
+                    break
 
-            if self._vad.is_speech(frame, SAMPLE_RATE):
-                self._on_speech(frame)
-            else:
-                chunk = self._on_silence(frame)
-                if chunk is not None:
-                    chunks.append(chunk)
+            if has_speech:
+                chunks.append(window_data)
+            
+            # Slide the window forward
+            del self._buffer[:self.step_bytes]
 
         return chunks
 
     def flush(self) -> bytes | None:
-        """Return any remaining speech buffer (call when stopping)."""
-        if self._in_speech and self._speech_frames >= self._min_frames:
-            result = bytes(self._speech)
-            self._reset()
-            return result
-        self._reset()
+        """Return any remaining buffer if it has speech."""
+        if len(self._buffer) > 0:
+            has_speech = False
+            for i in range(0, len(self._buffer), self.FRAME_BYTES):
+                frame = self._buffer[i:i + self.FRAME_BYTES]
+                if len(frame) == self.FRAME_BYTES and self._vad.is_speech(frame, SAMPLE_RATE):
+                    has_speech = True
+                    break
+            
+            if has_speech:
+                res = bytes(self._buffer)
+                self._buffer.clear()
+                return res
+            
+        self._buffer.clear()
         return None
 
     def reset(self):
         """Discard all state."""
-        self._raw.clear()
-        self._pre_roll.clear()
-        self._reset()
-
-    # ── Internal ───────────────────────────────────────────────────────
-
-    def _on_speech(self, frame: bytes):
-        if not self._in_speech:
-            self._in_speech = True
-            self._speech_frames = 0
-            self._silence_frames = 0
-            # Prepend pre-roll for a cleaner onset
-            for f in self._pre_roll:
-                self._speech.extend(f)
-            self._pre_roll.clear()
-
-        self._silence_frames = 0
-        self._speech.extend(frame)
-        self._speech_frames += 1
-
-    def _on_silence(self, frame: bytes) -> bytes | None:
-        if not self._in_speech:
-            self._pre_roll.append(frame)
-            return None
-
-        self._silence_frames += 1
-        self._speech.extend(frame)  # include trailing silence
-
-        if self._silence_frames >= self._silence_limit:
-            if self._speech_frames >= self._min_frames:
-                chunk = bytes(self._speech)
-                self._reset()
-                return chunk
-            self._reset()
-        return None
-
-    def _reset(self):
-        self._speech = bytearray()
-        self._in_speech = False
-        self._speech_frames = 0
-        self._silence_frames = 0
+        self._buffer.clear()

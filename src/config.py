@@ -26,3 +26,8 @@ PRE_SPEECH_MS = 300          # prepend this much audio before speech onset
 
 # ── Quran Matching ────────────────────────────────────────────────────
 MATCH_MIN_WORDS = 2          # minimum transcription words to attempt matching
+
+# ── Discovery / Tracking Modes ────────────────────────────────────────
+DISCOVERY_MIN_WORDS = 4      # min words before attempting discovery
+DISCOVERY_NGRAM_SIZES = [5, 4, 3]  # n-gram sizes to try (largest first)
+TRACKING_WINDOW = 5          # max words ahead/behind pointer in tracking mode

@@ -1,7 +1,8 @@
 """Quran text search and word-by-word comparison engine.
 
 Loads the full Quran text and provides:
-  - Free-mode verse detection from transcription
+  - Discovery mode: N-gram inverted index with uniqueness gating
+  - Tracking mode: local pointer-locked word matching
   - Word-by-word comparison with diacritics
 """
 
@@ -11,7 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.core.arabic import normalize
-from src.config import QURAN_JSON
+from src.config import (
+    QURAN_JSON, DISCOVERY_MIN_WORDS, DISCOVERY_NGRAM_SIZES, TRACKING_WINDOW,
+)
 
 
 @dataclass
@@ -36,23 +39,32 @@ class VerseMatch:
 
 
 class QuranIndex:
-    """Searchable index of the entire Quran text."""
+    """Searchable index of the entire Quran text.
+
+    Two search modes:
+      - discover(): exact N-gram lookup, only returns when match is unique
+      - track(): local search around current pointer, never global
+    """
 
     def __init__(self):
         self._surahs: list[dict] = []
         # Flat word list: [(normalized_word, original_word, surah_idx, ayah_idx, word_idx)]
         self._flat: list[tuple[str, str, int, int, int]] = []
-        # N-gram index: normalized bigram → list of positions in _flat
-        self._bigrams: dict[tuple[str, str], list[int]] = {}
+
+        # N-gram inverted index: tuple of N normalized words → list of flat positions
+        self._ngram_index: dict[tuple[str, ...], list[int]] = {}
+
+        # Single-word index for fallback
+        self._word_index: dict[str, list[int]] = {}
 
         self._load()
 
     def _load(self):
-        """Load Quran JSON and build search index."""
+        """Load Quran JSON and build search indices."""
         with open(QURAN_JSON, encoding="utf-8") as f:
             self._surahs = json.load(f)
 
-        # Build flat word list and bigram index
+        # Build flat word list
         for surah in self._surahs:
             s_id = surah["id"]
             for verse in surah["verses"]:
@@ -61,20 +73,113 @@ class QuranIndex:
                 for word_idx, w in enumerate(words):
                     norm = normalize(w)
                     if norm:
+                        pos = len(self._flat)
                         self._flat.append((norm, w, s_id, a_id, word_idx))
+                        self._word_index.setdefault(norm, []).append(pos)
 
-        # Build bigram index for fast lookup
-        for i in range(len(self._flat) - 1):
-            if self._flat[i][2] == self._flat[i + 1][2]:  # same surah
-                key = (self._flat[i][0], self._flat[i + 1][0])
-                if key not in self._bigrams:
-                    self._bigrams[key] = []
-                self._bigrams[key].append(i)
+        # Build N-gram inverted index for discovery
+        for n in DISCOVERY_NGRAM_SIZES:
+            for i in range(len(self._flat) - n + 1):
+                # Only index within same surah (don't span surah boundaries)
+                if self._flat[i][2] != self._flat[i + n - 1][2]:
+                    continue
+                key = tuple(self._flat[i + k][0] for k in range(n))
+                if key not in self._ngram_index:
+                    self._ngram_index[key] = []
+                self._ngram_index[key].append(i)
 
-    def find_and_compare(self, transcription: str, context_surah: int | None = None, context_ayah: int | None = None) -> VerseMatch | None:
-        """Find the best matching verse and compare word-by-word.
+    # ── Discovery Mode ─────────────────────────────────────────────────
 
-        Returns None if no match is found.
+    def discover(self, transcription: str) -> "VerseMatch | None":
+        """Find where the user is reciting using exact N-gram matching.
+
+        Returns a match ONLY when the phrase uniquely identifies a single
+        position in the Quran. Returns None if ambiguous or too few words.
+        """
+        trans_words = transcription.split()
+        trans_norm = [normalize(w) for w in trans_words]
+        trans_norm = [w for w in trans_norm if w]
+
+        if len(trans_norm) < DISCOVERY_MIN_WORDS:
+            return None
+
+        # Try N-grams from largest to smallest, using the TAIL of transcription
+        # (freshest/most recent words are most reliable)
+        for n in DISCOVERY_NGRAM_SIZES:
+            if len(trans_norm) < n:
+                continue
+
+            # Try multiple sliding positions from the tail
+            best_candidates = None
+            best_ngram_start = None
+
+            for offset in range(min(len(trans_norm) - n + 1, 4)):
+                start = len(trans_norm) - n - offset
+                if start < 0:
+                    break
+                ngram = tuple(trans_norm[start:start + n])
+                candidates = self._ngram_index.get(ngram, [])
+
+                if len(candidates) == 1:
+                    # Unique match! Compute actual start position
+                    # The ngram matched at flat position candidates[0],
+                    # but the transcription started `start` words before the ngram
+                    flat_pos = max(0, candidates[0] - start)
+                    return self._build_match(flat_pos, trans_words)
+
+                if len(candidates) > 0 and (best_candidates is None or len(candidates) < len(best_candidates)):
+                    best_candidates = candidates
+                    best_ngram_start = start
+
+            # If we found candidates but > 1, check if adding more context
+            # from the transcription can disambiguate
+            if best_candidates and len(best_candidates) <= 5 and best_ngram_start is not None:
+                # Try to disambiguate by checking surrounding words
+                unique_pos = self._disambiguate(trans_norm, best_candidates, best_ngram_start)
+                if unique_pos is not None:
+                    flat_pos = max(0, unique_pos - best_ngram_start)
+                    return self._build_match(flat_pos, trans_words)
+
+        return None
+
+    def _disambiguate(self, trans_norm: list[str], candidates: list[int], ngram_start: int) -> int | None:
+        """Try to narrow multiple candidates to one by checking surrounding words."""
+        best_pos = None
+        best_score = -1
+        unique = True
+
+        for cand_pos in candidates:
+            # Align: the ngram starts at trans_norm[ngram_start], flat[cand_pos]
+            # So transcription start aligns to flat[cand_pos - ngram_start]
+            aligned_start = cand_pos - ngram_start
+            if aligned_start < 0:
+                continue
+
+            score = 0
+            for i, tw in enumerate(trans_norm):
+                flat_i = aligned_start + i
+                if 0 <= flat_i < len(self._flat) and self._flat[flat_i][0] == tw:
+                    score += 1
+
+            if score > best_score:
+                best_score = score
+                best_pos = cand_pos
+                unique = True
+            elif score == best_score:
+                unique = False
+
+        # Only return if one candidate clearly wins
+        if unique and best_score >= len(trans_norm) * 0.8:
+            return best_pos
+        return None
+
+    # ── Tracking Mode ──────────────────────────────────────────────────
+
+    def track(self, transcription: str, context_surah: int, context_ayah: int, context_word_index: int) -> "VerseMatch | None":
+        """Match transcription against local context only.
+
+        Searches ONLY within ±TRACKING_WINDOW words of the current pointer.
+        Never does global search — if no local match, returns None.
         """
         trans_words = transcription.split()
         if len(trans_words) < 1:
@@ -85,25 +190,74 @@ class QuranIndex:
         if len(trans_norm) < 1:
             return None
 
-        # Find candidate starting positions using bigram lookup
-        best_pos = self._find_best_position(trans_norm, context_surah, context_ayah)
-        if best_pos is None:
+        # Find the flat index for current context position
+        context_pos = self._find_context_pos(context_surah, context_ayah, context_word_index)
+        if context_pos is None:
             return None
 
-        # Gather reference words across ayahs
+        # Search window: from current position backwards (overlap) to ahead
+        window_start = max(0, context_pos - len(trans_norm))
+        window_end = min(len(self._flat), context_pos + TRACKING_WINDOW + 1)
+
+        if window_start >= window_end:
+            return None
+
+        # Extract local window of normalized words
+        window_norm = [self._flat[i][0] for i in range(window_start, window_end)]
+
+        # Use SequenceMatcher on this small local window only
+        sm = difflib.SequenceMatcher(None, trans_norm, window_norm)
+        blocks = sm.get_matching_blocks()
+
+        if not blocks or blocks[0].size == 0:
+            return None
+
+        match_count = sum(b.size for b in blocks)
+        if match_count < min(2, len(trans_norm) * 0.4):
+            return None
+
+        # Compute best start position in flat array
+        best_start = window_start + blocks[0].b - blocks[0].a
+        best_start = max(0, best_start)
+
+        return self._build_match(best_start, trans_words)
+
+    def _find_context_pos(self, surah: int, ayah: int, word_index: int) -> int | None:
+        """Find the flat index for a given surah/ayah/word position.
+
+        Uses word_index to quickly narrow down, then linear scan.
+        Returns the position of the NEXT expected word (context + 1).
+        """
+        # Get the first word of this ayah via word_index lookup
+        for i in range(len(self._flat)):
+            s, a, w = self._flat[i][2], self._flat[i][3], self._flat[i][4]
+            if s == surah and a == ayah and w == word_index:
+                return i + 1  # Next expected word
+        return None
+
+    # ── Shared helpers ─────────────────────────────────────────────────
+
+    def _build_match(self, flat_pos: int, trans_words: list[str]) -> "VerseMatch | None":
+        """Build a VerseMatch from a flat position and transcription words."""
+        if flat_pos < 0 or flat_pos >= len(self._flat):
+            return None
+
+        # Gather reference words
         num_ref_words = len(trans_words) + 5
-        end_pos = min(len(self._flat), best_pos + num_ref_words)
-        
+        end_pos = min(len(self._flat), flat_pos + num_ref_words)
+
         ref_data = []
-        for i in range(best_pos, end_pos):
+        for i in range(flat_pos, end_pos):
             _, w, s_id, a_id, w_idx = self._flat[i]
             ref_data.append((w, s_id, a_id, w_idx))
+
+        if not ref_data:
+            return None
 
         # Word-by-word comparison
         words = self._compare_words(trans_words, ref_data)
 
-        # Base verse match info
-        _, _, start_s_id, start_a_id, start_offset = self._flat[best_pos]
+        _, _, start_s_id, start_a_id, start_offset = self._flat[flat_pos]
         surah = self._surahs[start_s_id - 1]
 
         return VerseMatch(
@@ -114,93 +268,14 @@ class QuranIndex:
             words=words,
         )
 
-    def _find_best_position(self, trans_norm: list[str], context_surah: int | None = None, context_ayah: int | None = None) -> int | None:
-        """Find the position in the flat word list that best matches."""
-        if not hasattr(self, '_word_index'):
-            self._word_index = {}
-            for i, (norm, _, _, _, _) in enumerate(self._flat):
-                self._word_index.setdefault(norm, []).append(i)
+    def find_and_compare(self, transcription: str, context_surah: int | None = None, context_ayah: int | None = None, context_word_index: int | None = None) -> VerseMatch | None:
+        """Legacy method — kept for backward compatibility.
 
-        candidate_positions = set()
-        
-        # Pick the most "rare" words in the transcription to use as anchors
-        word_rarity = []
-        for i, tw in enumerate(trans_norm):
-            if tw in self._word_index:
-                word_rarity.append((len(self._word_index[tw]), i, tw))
-        
-        word_rarity.sort(key=lambda x: x[0])
-        
-        # Take the top 3 rarest words as anchors
-        anchors = word_rarity[:3]
-        
-        for count, i, tw in anchors:
-            for pos in self._word_index[tw]:
-                start_pos = max(0, pos - i)
-                candidate_positions.add(start_pos)
-                candidate_positions.add(max(0, start_pos - 1))
-                candidate_positions.add(max(0, start_pos - 2))
-                candidate_positions.add(min(len(self._flat) - 1, start_pos + 1))
-                candidate_positions.add(min(len(self._flat) - 1, start_pos + 2))
-
-        if not candidate_positions:
-            return None
-
-        candidates = {}
-        for pos in candidate_positions:
-            end_pos = min(len(self._flat), pos + len(trans_norm) + 3)
-            window = [x[0] for x in self._flat[pos:end_pos]]
-            sm = difflib.SequenceMatcher(None, trans_norm, window)
-            blocks = sm.get_matching_blocks()
-            if blocks and blocks[0].size > 0:
-                actual_start = pos + blocks[0].b - blocks[0].a
-                actual_start = max(0, actual_start)
-                
-                match_count = sum(b.size for b in blocks)
-                if actual_start not in candidates or match_count > candidates[actual_start]:
-                    candidates[actual_start] = match_count
-
-        candidates_list = []
-        for pos, score in candidates.items():
-            if score >= min(2.0, len(trans_norm) * 0.4):
-                candidates_list.append((pos, score))
-
-        if not candidates_list:
-            return None
-
-        # Prioritize candidates near context
-        if context_surah is not None and context_ayah is not None:
-            best_candidate = None
-            best_score = -1
-            
-            for pos, score in candidates_list:
-                _, _, s_id, a_id, _ = self._flat[pos]
-                
-                is_near = False
-                if s_id == context_surah and context_ayah <= a_id <= context_ayah + 5:
-                    is_near = True
-                elif s_id == context_surah + 1 and a_id <= 5:
-                    is_near = True
-                    
-                boosted_score = score + (100 if is_near else 0)
-                
-                if boosted_score > best_score:
-                    best_score = boosted_score
-                    best_candidate = pos
-                    
-            if best_candidate is not None:
-                return best_candidate
-
-        # Default behavior: Return position with highest score
-        candidates_list.sort(key=lambda x: x[1], reverse=True)
-        return candidates_list[0][0]
-
-    def _score_match(self, trans_norm: list[str], start_pos: int) -> float:
-        """Score using SequenceMatcher for robust alignment (handles skipped/extra words)."""
-        end_pos = min(len(self._flat), start_pos + len(trans_norm) + 3)
-        window = [x[0] for x in self._flat[start_pos:end_pos]]
-        sm = difflib.SequenceMatcher(None, trans_norm, window)
-        return sum(block.size for block in sm.get_matching_blocks())
+        New code should use discover() or track() directly.
+        """
+        if context_surah is not None and context_ayah is not None and context_word_index is not None:
+            return self.track(transcription, context_surah, context_ayah, context_word_index)
+        return self.discover(transcription)
 
     def _compare_words(
         self, trans_words: list[str], ref_data: list[tuple[str, int, int, int]]

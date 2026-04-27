@@ -21,7 +21,7 @@ from src.ui.style import arabic_font
 from src.ui.mushaf_view import MushafView
 from src.ui.recitation import RecitationTracker
 from src.audio.capture import default_audio_format, get_input_device
-from src.audio.vad import ChunkDetector
+from src.audio.vad import SlidingWindowBuffer
 from src.audio import ModelLoaderThread, TranscriberWorker
 from src.core.quran import QuranIndex
 from src.core.page_map import PageMap
@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         self._listening = False
         self._audio_source: QAudioSource | None = None
         self._audio_io = None
-        self._chunk_detector: ChunkDetector | None = None
+        self._chunk_detector: SlidingWindowBuffer | None = None
 
         # Worker thread (created after model loads)
         self._worker: TranscriberWorker | None = None
@@ -203,7 +203,8 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            self._chunk_detector = ChunkDetector()
+            self._tracker.reset()
+            self._chunk_detector = SlidingWindowBuffer()
             self._audio_source = QAudioSource(device, fmt)
             self._audio_io = self._audio_source.start()
             self._audio_io.readyRead.connect(self._on_audio_data)
@@ -234,8 +235,10 @@ class MainWindow(QMainWindow):
             if leftover:
                 self._chunk_ready.emit({
                     "audio": leftover,
+                    "mode": self._tracker.mode,
                     "context_surah": self._tracker.last_surah,
                     "context_ayah": self._tracker.last_ayah,
+                    "context_word_index": self._tracker.last_word_index,
                 })
             self._chunk_detector = None
 
@@ -256,8 +259,10 @@ class MainWindow(QMainWindow):
         for chunk in chunks:
             self._chunk_ready.emit({
                 "audio": chunk,
+                "mode": self._tracker.mode,
                 "context_surah": self._tracker.last_surah,
                 "context_ayah": self._tracker.last_ayah,
+                "context_word_index": self._tracker.last_word_index,
             })
 
     # ── Transcription results ──────────────────────────────────────────
@@ -265,7 +270,11 @@ class MainWindow(QMainWindow):
     def _on_result(self, result: dict):
         """Display transcription result with Quran verification coloring."""
         html = self._tracker.on_result(result)
-        self.output_text.append(html)
+        self.output_text.setHtml(html)
+        # Auto-scroll to bottom to show last recited ayah
+        self.output_text.verticalScrollBar().setValue(
+            self.output_text.verticalScrollBar().maximum()
+        )
 
     def _on_worker_error(self, msg: str):
         self._set_status(f"Error: {msg}", "error")
@@ -288,6 +297,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         if self._listening:
             self._stop_listening()
+        if self._worker is not None:
+            self._worker.stop()
         if self._worker_thread is not None:
             self._worker_thread.quit()
             self._worker_thread.wait()

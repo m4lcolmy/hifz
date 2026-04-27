@@ -1,11 +1,16 @@
 """Recitation tracking — state machine for processing transcription results.
 
+Two modes:
+  - Discovery: accumulates words until a unique Quran position is found
+  - Tracking: locked to current position, local matching only
+
 Manages the current recitation position (surah, ayah, word index) and
 renders results with color-coded HTML feedback. Also drives the Mushaf
 view highlighting and page transitions.
 """
 
 from src.core.page_map import PageMap
+from src.core.arabic import normalize
 from src.ui.mushaf_view import MushafView
 from src.ui.style import CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR, VERSE_REF_COLOR
 
@@ -16,6 +21,10 @@ class RecitationTracker:
     Owns the state of which surah/ayah/word the user last recited,
     handles page transitions on the Mushaf, and generates styled HTML
     for the transcription output panel.
+
+    Mode state machine:
+      - "discovery": waiting for unique verse identification
+      - "tracking": locked to position, local matching only
     """
 
     def __init__(self, mushaf_view: MushafView, page_map: PageMap):
@@ -26,6 +35,42 @@ class RecitationTracker:
         self.last_surah: int | None = None
         self.last_ayah: int | None = None
         self.last_word_index: int = -1
+        self._processed_word_ids = set()
+        self._committed_html = ""
+        self._current_ayah_words = []
+        self._current_surah_name = ""
+        self._current_ayah_id = None
+
+        # Mode state machine
+        self._mode: str = "discovery"
+        self._discovery_buffer: list[str] = []  # accumulated words during discovery
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    def reset(self):
+        self.last_surah = None
+        self.last_ayah = None
+        self.last_word_index = -1
+        self._processed_word_ids.clear()
+        self._committed_html = ""
+        self._current_ayah_words = []
+        self._current_surah_name = ""
+        self._current_ayah_id = None
+        self._mode = "discovery"
+        self._discovery_buffer.clear()
+
+    def set_position(self, surah: int, ayah: int, word_index: int = 0):
+        """Manually set position (e.g. user tapped on Mushaf).
+
+        Immediately switches to tracking mode — skips discovery.
+        """
+        self.last_surah = surah
+        self.last_ayah = ayah
+        self.last_word_index = word_index
+        self._mode = "tracking"
+        self._discovery_buffer.clear()
 
     def on_result(self, result: dict) -> str:
         """Process a transcription result and return styled HTML for display.
@@ -33,78 +78,52 @@ class RecitationTracker:
         Also updates the Mushaf view highlighting and handles page transitions.
 
         Args:
-            result: Dict with 'text' (str) and 'match' (VerseMatch or None).
+            result: Dict with 'text' (str), 'match' (VerseMatch or None),
+                    and 'mode' (str).
 
         Returns:
             HTML string to append to the output panel.
         """
         text = result["text"]
         match = result["match"]
-        prev_surah = self.last_surah
-        prev_ayah = self.last_ayah
-        prev_word_index = self.last_word_index
+
+        # Discovery mode: accumulate words for display, wait for match
+        if self._mode == "discovery":
+            if match is None:
+                # Accumulate discovery buffer for display
+                new_words = text.split()
+                for w in new_words:
+                    nw = normalize(w)
+                    if nw and nw not in [normalize(x) for x in self._discovery_buffer[-3:]]:
+                        self._discovery_buffer.append(w)
+
+                # Show buffered text as "searching..."
+                buf_text = " ".join(self._discovery_buffer[-10:])
+                return (
+                    f'<p align="right" dir="rtl" style="margin-top:0px; margin-bottom:6px; color:#888;">'
+                    f'🔍 {buf_text}'
+                    f'</p>'
+                )
+            else:
+                # Discovery succeeded — unique match found!
+                self._mode = "tracking"
+                self._discovery_buffer.clear()
+                # Fall through to process the match
 
         if match is None:
-            # No Quran match — show plain text
-            return f'<div dir="rtl" style="text-align:right;">{text}</div>'
+            # Tracking mode but no local match — show text, don't jump
+            return self._committed_html + (
+                f'<p align="right" dir="rtl" style="margin-top:0px; margin-bottom:6px;">{text}</p>'
+            )
 
-        # Build HTML for the verse reference
-        ref_html = (
-            f'<div dir="rtl" style="text-align:right; margin-bottom:4px;">'
-            f'<span style="color:{VERSE_REF_COLOR}; font-size:12px;">'
-            f'[{match.surah_name} : {match.ayah_id}]'
-            f'</span></div>'
-        )
-
-        # Build HTML for colored words
-        word_spans = []
-        for w in match.words:
-            if w.recited and w.is_correct:
-                word_spans.append(
-                    f'<span style="color:{CORRECT_COLOR};">{w.recited}</span>'
-                )
-            elif w.recited and not w.is_correct:
-                word_spans.append(
-                    f'<span style="color:{INCORRECT_COLOR};">{w.recited}</span>'
-                )
-            elif not w.recited and w.reference:
-                word_spans.append(
-                    f'<span style="color:{MISSED_COLOR}; '
-                    f'text-decoration:underline;">{w.reference}</span>'
-                )
-
-        words_html = (
-            f'<div dir="rtl" style="text-align:right; line-height:2;">'
-            + " ".join(word_spans)
-            + "</div>"
-        )
-
-        html = ref_html + words_html
-
-        # ── Mushaf view updates ───────────────────────────────────────
-
-        # Determine the first valid word to handle gaps
-        first_valid_word = next((w for w in match.words if w.surah_id is not None), None)
-
-        # Load Mushaf page if needed
-        if first_valid_word:
-            page_num = self._page_map.get(first_valid_word.surah_id, first_valid_word.ayah_id)
-            if page_num and page_num != self._mushaf.current_page_num:
-                self._mushaf.load_page(page_num)
-
-            # Detect and highlight skipped words from previous chunk within the same ayah
-            if prev_surah == first_valid_word.surah_id and prev_ayah == first_valid_word.ayah_id:
-                expected_next = prev_word_index + 1
-                if first_valid_word.reference_index > expected_next:
-                    for missed_idx in range(expected_next, first_valid_word.reference_index):
-                        self._mushaf.update_recitation(
-                            first_valid_word.surah_id, first_valid_word.ayah_id,
-                            missed_idx, False
-                        )
-
+        new_words = []
         # Highlight words on Mushaf View and track state
         for w in match.words:
             if w.surah_id is None or w.ayah_id is None or w.reference_index is None:
+                continue
+
+            word_id = f"{w.surah_id}:{w.ayah_id}:{w.reference_index}"
+            if word_id in self._processed_word_ids:
                 continue
 
             # Load new page if recitation crosses a page boundary
@@ -120,10 +139,68 @@ class RecitationTracker:
                 continue
 
             self._mushaf.update_recitation(w.surah_id, w.ayah_id, w.reference_index, status)
+            self._processed_word_ids.add(word_id)
+            new_words.append(w)
 
             # Keep tracking state
             self.last_surah = w.surah_id
             self.last_ayah = w.ayah_id
             self.last_word_index = w.reference_index
 
-        return html
+        for w in new_words:
+            if self._current_ayah_id is None:
+                self._current_ayah_id = w.ayah_id
+                self._current_surah_name = match.surah_name
+            
+            if w.ayah_id != self._current_ayah_id:
+                self._flush_current_ayah()
+                self._current_ayah_id = w.ayah_id
+                self._current_surah_name = match.surah_name
+            
+            self._current_ayah_words.append(w)
+
+        # Build current ayah HTML
+        current_html = ""
+        if self._current_ayah_words:
+            ref_html = (
+                f'<span style="color:{VERSE_REF_COLOR}; font-size:12px;">'
+                f'[{self._current_surah_name} : {self._current_ayah_id}]'
+                f'</span><br>'
+            )
+            word_spans = []
+            for w in self._current_ayah_words:
+                if w.recited and w.is_correct:
+                    word_spans.append(f'<span style="color:{CORRECT_COLOR};">{w.recited}</span>')
+                elif w.recited and not w.is_correct:
+                    word_spans.append(f'<span style="color:{INCORRECT_COLOR};">{w.recited}</span>')
+                elif not w.recited and w.reference:
+                    word_spans.append(f'<span style="color:{MISSED_COLOR}; text-decoration:underline;">{w.reference}</span>')
+            
+            words_html = " ".join(word_spans)
+            current_html = f'<p align="right" dir="rtl" style="margin-top:0px; margin-bottom:6px;">{ref_html}{words_html}</p>'
+
+        return self._committed_html + current_html
+
+    def _flush_current_ayah(self):
+        if not self._current_ayah_words:
+            return
+        
+        ref_html = (
+            f'<span style="color:{VERSE_REF_COLOR}; font-size:12px;">'
+            f'[{self._current_surah_name} : {self._current_ayah_id}]'
+            f'</span><br>'
+        )
+        word_spans = []
+        for w in self._current_ayah_words:
+            if w.recited and w.is_correct:
+                word_spans.append(f'<span style="color:{CORRECT_COLOR};">{w.recited}</span>')
+            elif w.recited and not w.is_correct:
+                word_spans.append(f'<span style="color:{INCORRECT_COLOR};">{w.recited}</span>')
+            elif not w.recited and w.reference:
+                word_spans.append(f'<span style="color:{MISSED_COLOR}; text-decoration:underline;">{w.reference}</span>')
+        
+        words_html = " ".join(word_spans)
+        self._committed_html += f'<p align="right" dir="rtl" style="margin-top:0px; margin-bottom:6px;">{ref_html}{words_html}</p>'
+        self._current_ayah_words = []
+
+
