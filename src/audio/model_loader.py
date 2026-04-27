@@ -2,7 +2,7 @@
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from tarteel.config import MODEL_NAME, DEVICE, USE_FP16
+from src.config import MODEL_DIR, DEVICE, USE_FP16
 
 
 class ModelLoaderThread(QThread):
@@ -22,7 +22,7 @@ class ModelLoaderThread(QThread):
             
             # Note: faster_whisper handles device and compute_type internally
             model = WhisperModel(
-                MODEL_NAME, 
+                MODEL_DIR, 
                 device=DEVICE, 
                 compute_type=compute_type,
                 local_files_only=True

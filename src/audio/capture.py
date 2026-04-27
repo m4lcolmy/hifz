@@ -7,10 +7,9 @@ WASAPI on Windows, CoreAudio on macOS) — no PortAudio dependency.
 import struct
 import numpy as np
 
-from PyQt6.QtCore import QByteArray
-from PyQt6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
+from PyQt6.QtMultimedia import QAudioFormat, QMediaDevices
 
-from tarteel.config import SAMPLE_RATE, CHANNELS
+from src.config import SAMPLE_RATE, CHANNELS
 
 
 def default_audio_format() -> QAudioFormat:

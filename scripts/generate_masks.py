@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""
-Offline Mask Coordinate Generator for Mushaf Pages
-===================================================
+"""Offline Mask Coordinate Generator for Mushaf Pages.
 
-This script processes all Mushaf page images using OpenCV to:
+Processes all Mushaf page images using OpenCV to:
 1. Detect ayah finishing signs (ornate circled numbers) via contour analysis.
 2. Compute precise bounding boxes for each text word on each line.
 3. Save all coordinates to a JSON file for use by the app at runtime.
 
 Usage (run once from the project root):
     conda activate offline-tarteel
-    python tarteel/scripts/generate_masks.py
+    python scripts/generate_masks.py
 
 Output:
-    tarteel/data/Quran_Dataset/Quran_pages_mask_coords.json
+    data/Quran_Dataset/Quran_pages_mask_coords.json
 """
 
 import cv2
@@ -23,14 +21,14 @@ import os
 import re
 import sys
 from collections import Counter
+from pathlib import Path
 
-# Paths
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
-DATASET_DIR = os.path.join(PROJECT_ROOT, "tarteel", "data", "Quran_Dataset")
-IMAGES_DIR = os.path.join(DATASET_DIR, "Quran_pages_white_background")
-LINES_TXT = os.path.join(DATASET_DIR, "Quran_pages_lines_ayah_marker.txt")
-OUTPUT_JSON = os.path.join(DATASET_DIR, "Quran_pages_mask_coords.json")
+# Paths — relative to project root
+PROJECT_ROOT = Path(__file__).parent.parent
+DATASET_DIR = PROJECT_ROOT / "data" / "Quran_Dataset"
+IMAGES_DIR = DATASET_DIR / "Quran_pages_white_background"
+LINES_TXT = DATASET_DIR / "Quran_pages_lines_ayah_marker.txt"
+OUTPUT_JSON = DATASET_DIR / "Quran_pages_mask_coords.json"
 
 
 def parse_all_page_lines(txt_path: str) -> dict:
@@ -51,8 +49,7 @@ def parse_all_page_lines(txt_path: str) -> dict:
 
 
 def detect_ayah_markers(binary_img: np.ndarray) -> list:
-    """
-    Detect ayah finishing signs (ornate circled numbers) using contour analysis.
+    """Detect ayah finishing signs (ornate circled numbers) using contour analysis.
     
     These markers are the most frequently occurring large, squarish contours
     on a page. They have a consistent area and aspect ratio ~1.0-1.1.
@@ -96,19 +93,18 @@ def detect_ayah_markers(binary_img: np.ndarray) -> list:
 
 
 def process_page(page_num: int, page_lines_raw: list) -> dict:
-    """
-    Process a single Mushaf page and return its mask coordinates.
+    """Process a single Mushaf page and return its mask coordinates.
     
     Returns a dict with:
     - "markers": list of {x, y, w, h} for ayah finishing signs (NOT masked)
     - "word_boxes": list of {flat_idx, x, y, w, h} for text words (TO BE masked)
     - "header_lines": list of {line_idx, type} for surah/bismillah headers (NOT masked)
     """
-    img_path = os.path.join(IMAGES_DIR, f"{page_num:03d}.png")
-    if not os.path.exists(img_path):
+    img_path = IMAGES_DIR / f"{page_num:03d}.png"
+    if not img_path.exists():
         return None
 
-    img = cv2.imread(img_path)
+    img = cv2.imread(str(img_path))
     if img is None:
         return None
 
@@ -259,21 +255,21 @@ def main():
     print("=" * 60)
 
     # Validate paths
-    if not os.path.exists(IMAGES_DIR):
+    if not IMAGES_DIR.exists():
         print(f"ERROR: Image directory not found: {IMAGES_DIR}")
         sys.exit(1)
-    if not os.path.exists(LINES_TXT):
+    if not LINES_TXT.exists():
         print(f"ERROR: Lines text file not found: {LINES_TXT}")
         sys.exit(1)
 
     # Parse text file
     print(f"\nParsing {LINES_TXT}...")
-    all_pages_lines = parse_all_page_lines(LINES_TXT)
+    all_pages_lines = parse_all_page_lines(str(LINES_TXT))
     print(f"  Found {len(all_pages_lines)} pages in text file.")
 
     # Determine page range
     image_files = sorted(
-        f for f in os.listdir(IMAGES_DIR) if f.endswith(".png")
+        f for f in os.listdir(str(IMAGES_DIR)) if f.endswith(".png")
     )
     page_nums = []
     for f in image_files:
@@ -314,10 +310,10 @@ def main():
 
     # Save
     print(f"\nSaving to {OUTPUT_JSON}...")
-    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+    with open(str(OUTPUT_JSON), "w", encoding="utf-8") as f:
         json.dump(all_results, f, ensure_ascii=False)
 
-    file_size = os.path.getsize(OUTPUT_JSON) / (1024 * 1024)
+    file_size = os.path.getsize(str(OUTPUT_JSON)) / (1024 * 1024)
 
     print(f"\n{'=' * 60}")
     print(f"  DONE!")

@@ -14,10 +14,10 @@ import sys
 from pathlib import Path
 
 API_BASE = "https://api.quran.com/api/v4"
-OUTPUT = Path(__file__).parent.parent / "tarteel" / "data" / "quran.json"
+OUTPUT = Path(__file__).parent.parent / "data" / "quran.json"
 
 # We need surah metadata (names, etc.) from the existing file
-EXISTING = Path(__file__).parent.parent / "tarteel" / "data" / "quran.json"
+EXISTING = OUTPUT
 
 
 def fetch_json(url: str) -> dict:
@@ -26,7 +26,7 @@ def fetch_json(url: str) -> dict:
         try:
             req = urllib.request.Request(url, headers={
                 "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Tarteel-Quran-App/1.0",
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Hifz-Quran-App/1.0",
             })
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.loads(resp.read().decode("utf-8"))

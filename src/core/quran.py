@@ -10,11 +10,8 @@ import difflib
 from dataclasses import dataclass
 from pathlib import Path
 
-from tarteel.arabic import normalize
-
-# ── Data path ──────────────────────────────────────────────────────────
-_DATA_DIR = Path(__file__).parent / "data"
-_QURAN_JSON = _DATA_DIR / "quran.json"
+from src.core.arabic import normalize
+from src.config import QURAN_JSON
 
 
 @dataclass
@@ -52,7 +49,7 @@ class QuranIndex:
 
     def _load(self):
         """Load Quran JSON and build search index."""
-        with open(_QURAN_JSON, encoding="utf-8") as f:
+        with open(QURAN_JSON, encoding="utf-8") as f:
             self._surahs = json.load(f)
 
         # Build flat word list and bigram index
@@ -156,10 +153,6 @@ class QuranIndex:
             sm = difflib.SequenceMatcher(None, trans_norm, window)
             blocks = sm.get_matching_blocks()
             if blocks and blocks[0].size > 0:
-                # blocks[0].b is the offset in the window where the match actually starts
-                # blocks[0].a is the offset in trans_norm where the match starts
-                # If the user skipped the first word (a > 0), the actual start in the Quran should correspond to where trans_norm[0] WOULD be.
-                # So actual_start = pos + blocks[0].b - blocks[0].a
                 actual_start = pos + blocks[0].b - blocks[0].a
                 actual_start = max(0, actual_start)
                 
@@ -328,8 +321,6 @@ class QuranIndex:
         t = t.replace("\u065E", "\u064C") # ٞ -> ٌ (Dammatan)
         
         # Remove silent/long alef after fathah (العَالَمِينَ → العَلَمِينَ)
-        # This handles the Uthmani↔Imla'i difference where one uses
-        # dagger alef and the other uses full alef for the same sound.
         t = re.sub("\u064E\u0627", "\u064E", t)  # فَا → فَ
         # Remove Quranic annotation marks that Whisper won't produce
         t = re.sub("[\u06D6-\u06E0\u06E2-\u06ED\u06DE]", "", t)

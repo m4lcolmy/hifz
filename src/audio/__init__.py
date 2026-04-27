@@ -1,4 +1,4 @@
-"""Background worker threads."""
+"""Audio pipeline — capture, VAD, model loading, and transcription."""
 
 from .model_loader import ModelLoaderThread
 from .transcriber import TranscriberWorker

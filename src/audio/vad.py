@@ -8,7 +8,7 @@ are returned when enough trailing silence is detected.
 import collections
 import webrtcvad
 
-from tarteel.config import (
+from src.config import (
     SAMPLE_RATE, VAD_AGGRESSIVENESS, VAD_FRAME_MS,
     SILENCE_THRESHOLD_MS, MIN_SPEECH_MS, PRE_SPEECH_MS,
 )

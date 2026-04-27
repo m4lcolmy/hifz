@@ -1,4 +1,4 @@
-"""Entry point for Tarteel Quran Whisper Tester."""
+"""Entry point for Hifz — Quran Recitation Trainer."""
 
 import sys
 import os
@@ -10,8 +10,8 @@ os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 from PyQt6.QtWidgets import QApplication
 
-from tarteel.style import STYLESHEET, app_font
-from tarteel.ui import MainWindow
+from src.ui.style import STYLESHEET, app_font
+from src.ui import MainWindow
 
 
 def main():

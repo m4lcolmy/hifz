@@ -156,10 +156,10 @@ cython_debug/
 # ── Project Specific ──────────────────────────────────────────────────
 
 # Large model files
-tarteel-ai-whisper-ct2/
+models/
 
 # Temporary scratch files
 scratch/
 
-# Local data (if preferred to keep out of git)
-# tarteel/data/Quran_Dataset/
+# Local data (large dataset, keep out of git)
+data/Quran_Dataset/

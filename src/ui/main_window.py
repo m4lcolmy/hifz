@@ -11,34 +11,31 @@ Flow:
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTextEdit, QSplitter,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect,
 )
 from PyQt6.QtGui import QColor
-import os
-import json
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtMultimedia import QAudioSource
 
-
-from tarteel.style import (
-    arabic_font, CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR, VERSE_REF_COLOR,
-)
-from tarteel.audio import default_audio_format, get_input_device
-from tarteel.vad import ChunkDetector
-from tarteel.quran import QuranIndex
-from tarteel.threads import ModelLoaderThread, TranscriberWorker
-from tarteel.mushaf_view import MushafView
+from src.ui.style import arabic_font
+from src.ui.mushaf_view import MushafView
+from src.ui.recitation import RecitationTracker
+from src.audio.capture import default_audio_format, get_input_device
+from src.audio.vad import ChunkDetector
+from src.audio import ModelLoaderThread, TranscriberWorker
+from src.core.quran import QuranIndex
+from src.core.page_map import PageMap
 
 
 class MainWindow(QMainWindow):
-    """Real-time Quran transcription + verification window."""
+    """Real-time Quran recitation + verification window."""
 
     # Signals
     _chunk_ready = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Tarteel Quran Whisper Tester")
+        self.setWindowTitle("Hifz — Quran Recitation Trainer")
         self.setMinimumSize(800, 480)
         self.resize(1000, 600)
 
@@ -54,32 +51,18 @@ class MainWindow(QMainWindow):
         self._worker: TranscriberWorker | None = None
         self._worker_thread: QThread | None = None
 
-        # Tracking recitation progress
-        self._last_surah = None
-        self._last_ayah = None
-        self._last_word_index = -1
-
         # Quran index (loaded in background)
         self._quran_index: QuranIndex | None = None
 
-        self._build_page_map()
+        # Page map for surah/ayah → page lookup
+        self._page_map = PageMap()
+
         self._build_ui()
         self._load_quran_index()
         self._load_model()
-        
-    def _build_page_map(self):
-        self._page_map = {}
-        data_dir = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset", "Quran_pages_data_json")
-        if not os.path.exists(data_dir):
-            print(f"Warning: Dataset not found at {data_dir}")
-            return
-        for i in range(1, 605):
-            path = os.path.join(data_dir, f"page_{i}.json")
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    for ayah in data.get("ayahs", []):
-                        self._page_map[(ayah["sura"], ayah["ayah"])] = i
+
+        # Recitation tracker (owns position state + result rendering)
+        self._tracker = RecitationTracker(self.mushaf_view, self._page_map)
 
     # ── UI construction ────────────────────────────────────────────────
 
@@ -101,8 +84,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.mushaf_view)
         
         # Load page 1 initially so it's not completely empty
-        dataset_path = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset")
-        self.mushaf_view.load_dataset_page(dataset_path, 1)
+        self.mushaf_view.load_page(1)
 
         # Transcription output (Right side, RTL for Arabic)
         self.output_text = QTextEdit()
@@ -252,8 +234,8 @@ class MainWindow(QMainWindow):
             if leftover:
                 self._chunk_ready.emit({
                     "audio": leftover,
-                    "context_surah": self._last_surah,
-                    "context_ayah": self._last_ayah
+                    "context_surah": self._tracker.last_surah,
+                    "context_ayah": self._tracker.last_ayah,
                 })
             self._chunk_detector = None
 
@@ -274,107 +256,16 @@ class MainWindow(QMainWindow):
         for chunk in chunks:
             self._chunk_ready.emit({
                 "audio": chunk,
-                "context_surah": self._last_surah,
-                "context_ayah": self._last_ayah
+                "context_surah": self._tracker.last_surah,
+                "context_ayah": self._tracker.last_ayah,
             })
 
     # ── Transcription results ──────────────────────────────────────────
 
     def _on_result(self, result: dict):
         """Display transcription result with Quran verification coloring."""
-        text = result["text"]
-        match = result["match"]
-        prev_surah = self._last_surah
-        prev_ayah = self._last_ayah
-        prev_word_index = self._last_word_index
-
-        if match is None:
-            # No Quran match — show plain text (likely Arabic)
-            self.output_text.append(f'<div dir="rtl" style="text-align:right;">{text}</div>')
-            return
-
-        # Build HTML for the verse reference
-        ref_html = (
-            f'<div dir="rtl" style="text-align:right; margin-bottom:4px;">'
-            f'<span style="color:{VERSE_REF_COLOR}; font-size:12px;">'
-            f'[{match.surah_name} : {match.ayah_id}]'
-            f'</span></div>'
-        )
-
-        # Build HTML for colored words
-        word_spans = []
-        for w in match.words:
-            if w.recited and w.is_correct:
-                # Correct — green
-                word_spans.append(
-                    f'<span style="color:{CORRECT_COLOR};">{w.recited}</span>'
-                )
-            elif w.recited and not w.is_correct:
-                # Wrong word or wrong diacritics — red
-                word_spans.append(
-                    f'<span style="color:{INCORRECT_COLOR};">{w.recited}</span>'
-                )
-            elif not w.recited and w.reference:
-                # Missed word — show reference in amber with strikethrough
-                word_spans.append(
-                    f'<span style="color:{MISSED_COLOR}; '
-                    f'text-decoration:underline;">{w.reference}</span>'
-                )
-
-        words_html = (
-            f'<div dir="rtl" style="text-align:right; line-height:2;">'
-            + " ".join(word_spans)
-            + "</div>"
-        )
-
-        self.output_text.append(ref_html + words_html)
-
-        # Determine the first valid word to handle gaps
-        first_valid_word = next((w for w in match.words if w.surah_id is not None), None)
-        
-        # Load Mushaf page if needed
-        if first_valid_word:
-            page_num = self._page_map.get((first_valid_word.surah_id, first_valid_word.ayah_id))
-            if page_num and page_num != self.mushaf_view.current_page_num:
-                dataset_path = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset")
-                self.mushaf_view.load_dataset_page(dataset_path, page_num)
-            
-            # Detect and highlight skipped words from previous chunk within the same ayah
-            if prev_surah == first_valid_word.surah_id and prev_ayah == first_valid_word.ayah_id:
-                expected_next = prev_word_index + 1
-                if first_valid_word.reference_index > expected_next:
-                    for missed_idx in range(expected_next, first_valid_word.reference_index):
-                        self.mushaf_view.update_recitation(first_valid_word.surah_id, first_valid_word.ayah_id, missed_idx, False)
-
-        # Highlight words on Mushaf View and track state
-        for w in match.words:
-            if w.surah_id is None or w.ayah_id is None or w.reference_index is None:
-                continue
-
-            # Load new page if recitation crosses a page boundary
-            page_num = self._page_map.get((w.surah_id, w.ayah_id))
-            if page_num and page_num != self.mushaf_view.current_page_num:
-                dataset_path = os.path.join(os.path.dirname(__file__), "data", "Quran_Dataset")
-                self.mushaf_view.load_dataset_page(dataset_path, page_num)
-
-            if w.recited and w.is_correct:
-                status = True
-            elif w.reference:
-                status = False
-            else:
-                continue
-                
-            self.mushaf_view.update_recitation(
-                w.surah_id, 
-                w.ayah_id, 
-                w.reference_index, 
-                status
-            )
-
-            # Keep tracking state
-            self._last_surah = w.surah_id
-            self._last_ayah = w.ayah_id
-            self._last_word_index = w.reference_index
+        html = self._tracker.on_result(result)
+        self.output_text.append(html)
 
     def _on_worker_error(self, msg: str):
         self._set_status(f"Error: {msg}", "error")

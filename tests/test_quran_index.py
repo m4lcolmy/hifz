@@ -1,7 +1,7 @@
 import unittest
 
-from tarteel.arabic import normalize
-from tarteel.quran import QuranIndex
+from src.core.arabic import normalize
+from src.core.quran import QuranIndex
 
 
 class QuranIndexTests(unittest.TestCase):
@@ -10,19 +10,19 @@ class QuranIndexTests(unittest.TestCase):
         cls.index = QuranIndex()
 
     def test_partial_recitation_does_not_mark_next_word_missed(self):
-        match = self.index.find_and_compare("الْحَمْدُ لِلَّهِ")
+        match = self.index.find_and_compare("الْحَمْدُ لِلَّهِ")
         self.assertIsNotNone(match)
         self.assertEqual((match.surah_id, match.ayah_id, match.start_offset), (1, 2, 0))
         self.assertEqual(
             [(word.recited, word.reference, word.is_correct) for word in match.words],
             [
                 ("الْحَمْدُ", "الْحَمْدُ", True),
-                ("لِلَّهِ", "لِلَّهِ", True),
+                ("لِلَّهِ", "لِلَّهِ", True),
             ],
         )
 
     def test_repeated_words_keep_real_start_offset(self):
-        match = self.index.find_and_compare("الرَّحْمَٰنِ الرَّحِيمِ")
+        match = self.index.find_and_compare("الرَّحْمَٰنِ الرَّحِيمِ")
         self.assertIsNotNone(match)
         self.assertEqual((match.surah_id, match.ayah_id, match.start_offset), (1, 1, 2))
 

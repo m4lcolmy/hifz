@@ -1,7 +1,15 @@
 """Application-wide constants and configuration."""
 
+from pathlib import Path
+
+# ── Paths ──────────────────────────────────────────────────────────────
+PROJECT_ROOT = Path(__file__).parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+DATASET_DIR = DATA_DIR / "Quran_Dataset"
+QURAN_JSON = DATA_DIR / "quran.json"
+
 # ── Model ──────────────────────────────────────────────────────────────
-MODEL_NAME = "./tarteel-ai-whisper-ct2"
+MODEL_DIR = str(PROJECT_ROOT / "models")
 DEVICE = "cpu"
 USE_FP16 = False  # half-precision for faster inference on GPU
 
