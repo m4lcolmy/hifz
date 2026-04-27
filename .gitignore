@@ -163,6 +163,7 @@ scratch/
 
 # Local data (large dataset, keep out of git)
 data/Quran_Dataset/
+data/qcf_assets/
 
 # Agent/Tooling
 .agents/
