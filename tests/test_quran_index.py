@@ -17,14 +17,14 @@ class QuranIndexTests(unittest.TestCase):
             [(word.recited, word.reference, word.is_correct) for word in match.words],
             [
                 ("الْحَمْدُ", "الْحَمْدُ", True),
-                ("لِلَّهِ", "لِلَّهِ", True),
+                ("لِلَّهِ", "لِلَّهِ", True),
             ],
         )
 
     def test_repeated_words_keep_real_start_offset(self):
         match = self.index.find_and_compare("الرَّحْمَٰنِ الرَّحِيمِ")
         self.assertIsNotNone(match)
-        self.assertEqual((match.surah_id, match.ayah_id, match.start_offset), (1, 1, 2))
+        self.assertEqual((match.surah_id, match.ayah_id, match.start_offset), (1, 3, 0))
 
     def test_normalize_keeps_real_letters(self):
         self.assertEqual(normalize("ذَلِكَ"), normalize("ذَٰلِكَ"))

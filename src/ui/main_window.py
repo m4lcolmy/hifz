@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
 )
 from PyQt6.QtGui import QColor
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint
 from PyQt6.QtMultimedia import QAudioSource
 
 from src.ui.style import arabic_font
@@ -37,7 +37,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Hifz — Quran Recitation Trainer")
         self.setMinimumSize(800, 480)
-        self.resize(1000, 600)
+        self.resize(1000, 800) 
+        self._center_window()
 
         # ── State ──────────────────────────────────────────────────────
         self.processor = None
@@ -63,6 +64,13 @@ class MainWindow(QMainWindow):
 
         # Recitation tracker (owns position state + result rendering)
         self._tracker = RecitationTracker(self.mushaf_view, self._page_map)
+
+    def _center_window(self):
+        """Center the main window on the current screen."""
+        frame = self.frameGeometry()
+        center = self.screen().availableGeometry().center()
+        frame.moveCenter(center - QPoint(0, 35))
+        self.move(frame.topLeft())
 
     # ── UI construction ────────────────────────────────────────────────
 

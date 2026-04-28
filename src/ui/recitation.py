@@ -90,18 +90,10 @@ class RecitationTracker:
         # Discovery mode: accumulate words for display, wait for match
         if self._mode == "discovery":
             if match is None:
-                # Accumulate discovery buffer for display
-                new_words = text.split()
-                for w in new_words:
-                    nw = normalize(w)
-                    if nw and nw not in [normalize(x) for x in self._discovery_buffer[-3:]]:
-                        self._discovery_buffer.append(w)
-
-                # Show buffered text as "searching..."
-                buf_text = " ".join(self._discovery_buffer[-10:])
+                # No match yet — just show transcribed text
                 return (
                     f'<p align="right" dir="rtl" style="margin-top:0px; margin-bottom:6px; color:#888;">'
-                    f'🔍 {buf_text}'
+                    f'🔍 {text}'
                     f'</p>'
                 )
             else:
@@ -118,6 +110,7 @@ class RecitationTracker:
 
         new_words = []
         # Highlight words on Mushaf View and track state
+        current_page = None
         for w in match.words:
             if w.surah_id is None or w.ayah_id is None or w.reference_index is None:
                 continue
@@ -126,10 +119,11 @@ class RecitationTracker:
             if word_id in self._processed_word_ids:
                 continue
 
-            # Load new page if recitation crosses a page boundary
+            # Load new page if recitation crosses a page boundary (only once per result)
             page_num = self._page_map.get(w.surah_id, w.ayah_id)
-            if page_num and page_num != self._mushaf.current_page_num:
+            if page_num and page_num != self._mushaf.current_page_num and page_num != current_page:
                 self._mushaf.load_page(page_num)
+                current_page = page_num
 
             if w.recited and w.is_correct:
                 status = True
@@ -141,11 +135,6 @@ class RecitationTracker:
             self._mushaf.update_recitation(w.surah_id, w.ayah_id, w.reference_index, status)
             self._processed_word_ids.add(word_id)
             new_words.append(w)
-
-            # Keep tracking state
-            self.last_surah = w.surah_id
-            self.last_ayah = w.ayah_id
-            self.last_word_index = w.reference_index
 
         for w in new_words:
             if self._current_ayah_id is None:
