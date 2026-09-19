@@ -23,7 +23,7 @@ fewer words scores better. Tier 3 found a recording the benchmark called clean
 that had silently dropped 24 of its 93 words. All three numbers, always.
 
 ```bash
-python -m pytest tests/ -q                      # 56 tests
+python -m pytest tests/ -q                      # 61 tests
 python scripts/test_search_algorithm.py         # 63 search cases
 python scripts/benchmark_recordings.py          # the real one
 python scripts/replay_session.py logs/<log>     # one past session, no audio
@@ -49,25 +49,32 @@ Five real sessions, all recited correctly, all replayable from `logs/`:
 | `135237` | Fussilat 41:2–5, in order | good | 2 | 1 |
 | `131925` | An-Nisa 4:1–4, in order | 85/86 | 5 | 2 |
 | `144348` | **Al-Hijr, jumping about** | every located ayah **100%** | 4 | **5, one wrong** |
-| `140605` | An-Nur 24:28–29, **An-Nisa 4:11–12** | 4:11 **41%**, 24:29 **29%** | **17** | 4 |
+| `140605` | An-Nur 24:28–29, **An-Nisa 4:11–12** | 4:12 **87/88** | **17** | 4 |
 
-Three things fall out of that table, and they are the whole plan.
+Two things fall out of that table. A third — "long ayahs collapse" — was read
+out of it and **turned out to be false**; see Tier B, and note that the claim
+came from counting words the reciter never recited.
 
-**1. Ordinary recitation is close to solved.** Short and medium ayahs recited
-in sequence come back complete and almost entirely green. Tiers 1, 1.5 and 3.6
-did their job; nothing below proposes to improve this case further.
+**1. Ordinary recitation is close to solved.** Short, medium *and long* ayahs
+recited in sequence come back complete and almost entirely green. An-Nisa 4:12
+is 88 words and scored 87 of them. Tiers 1, 1.5, 3.6 and A did their job;
+nothing below proposes to improve this case further.
 
-**2. Long ayahs collapse.** An-Nisa 4:11 is 71 words and 4:12 is 88 — the
-inheritance ayahs, dense with repeated formulas. 4:11 scored **29 of 71
-words** and the session painted **17 red**, the worst of any session recorded.
-This is a different failure from anything measured so far: the corpus's
-longest ayah is 17 words.
+**2. Jumping costs a lock-on every time.** Reciting *randomly* — a few ayahs
+here, a few there, which is how hifz is actually revised — produced five
+separate discovery episodes in 110 seconds of Al-Hijr and roughly **17 of those
+110 seconds with a blank page**. Tier A removed the worst of it (one episode
+locked onto Al-Qasas, 150 pages away) but four remain.
 
-**3. Jumping costs a lock-on every time, and can land in the wrong surah.**
-Reciting *randomly* — a few ayahs here, a few there, which is how hifz is
-actually revised — produced five separate discovery episodes in 110 seconds
-and roughly **17 of those 110 seconds with a blank page**. One of the five
-locked onto **Al-Qasas 28:16, 150 pages from Al-Hijr**.
+*Following the reciter automatically is the product. Manual aids — tapping a
+word to start, preferring the page on screen — were considered as Tier C and
+**deliberately dropped**: they solve the symptom by asking the reciter to do
+the app's job. Revisit only if the automatic path plateaus.*
+
+**3. What survives is the model, not the matcher.** Every red word left in
+every session is one Whisper never heard correctly in any window — `فُصِّلَتْ`
+as `فُصِّدَتْ` in 7 windows of 11, `فَلِأُمِّهِ` as `فَلَكُورٌ`. No matcher change
+reaches those. That is Tier F.
 
 ---
 
