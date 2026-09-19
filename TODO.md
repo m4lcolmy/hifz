@@ -22,9 +22,10 @@ Two numbers must be reported together, always:
 A change that improves the first by damaging the second is a regression. The
 benchmark prints both for this reason.
 
-**Baseline today:** 4.6% false alarms, 2/2 caught, 27 unit tests, 63 search
-cases. But see Tier 1 — the benchmark is currently blind to how the app
-behaves in a real session.
+**Baseline today:** 0.6% false alarms, 2/2 caught, 42 unit tests, 63 search
+cases. The benchmark is still short, clean and forward-only — every bug in
+Tier 1 and Tier 1.5 was found by reciting, and only then written into a test.
+That is what Tier 3 is for.
 
 ---
 
@@ -155,10 +156,112 @@ python scripts/benchmark_recordings.py
 
 ---
 
+# Tier 1.5 — Score what was recited before the lock ✅ DONE
+
+*Unplanned. Found by reciting, not by testing — the gap Tier 3 exists to close.*
+
+### Gate result
+
+| Measure | Before | After | Target |
+|---|---|---|---|
+| Benchmark false alarms | 2.0% | **0.6%** ✅ | ≤ 2.0% |
+| Mistakes caught | 2/2 | **2/2** ✅ | 2/2 |
+| Al-Fatiha ayahs shown (`122520`) | 4 / 7 | **7 / 7** ✅ | 7/7 |
+| Al-Fatiha words scored (`122520`) | 19 / 29 | **26 / 29** | ≥ 27 |
+| Al-Fatiha words scored (`125436`) | 26 / 29 | **29 / 29** ✅ | ≥ 27 |
+| 1:1 `بسم الله الرحمن الرحيم` | 1 word, 1 red | **4/4, all green** ✅ | 4/4 |
+| 2:1 `الم` | never shown at all | **shown, green** ✅ | shown |
+| Unit tests | 32 | **42** ✅ | pass |
+| Search cases | 63 | **63** ✅ | pass |
+
+Both word counts are `scripts/replay_session.py` on the two session logs in
+`logs/`, before and after, not the figures quoted in Tier 1 — that row counted
+slightly differently and does not reproduce.
+
+Tier 1's remaining gap — *"1:1, 1:2, 1:3 are the ones recited before discovery
+could lock"* — is closed, and closed without any of Tier 2's priors.
+
+### Why
+
+**1.5.1 An ayah can be one word, and discovery demanded two.**
+
+```
+[22.048s] ASR   text="الم"
+[22.049s] MATCH mode=discovery ctx=none -> SKIPPED (only 1 word(s), need 2)
+[22.348s] ASR   text="الم"
+[22.348s] MATCH mode=discovery ctx=none -> SKIPPED (only 1 word(s), need 2)
+```
+
+Transcribed perfectly, twice, and thrown away both times — `DISCOVERY_MIN_WORDS
+= 2` can never be satisfied by an ayah that is one word long. There are 28 such
+ayahs. Ten of them are unique in the whole Quran and were simply unreachable:
+`المص` `كهيعص` `طه` `يس` `عسق` `وَالطُّورِ` `مُدْهَامَّتَانِ` `وَالْفَجْرِ`
+`وَالضُّحَىٰ` `وَالْعَصْرِ`.
+
+The other eighteen are genuinely ambiguous and must stay refused. `الم` opens
+six surahs, and normalization also merges it with the `أَلَمْ` of `أَلَمْ تَرَ`
+— 84 occurrences. Hearing `الم` really does not say where the reciter is.
+
+**1.5.2 Everything recited before the lock was discarded.** Discovery answers
+only when a phrase is unique, so the opening of a surah — the hardest phrase to
+place, and the one every session begins with — is transcribed, refused and
+dropped. But the chunk *was* understood; only the position was unknown:
+
+```
+[119.096s] ASR   text="سَمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ"
+[119.097s] MATCH mode=discovery ctx=none -> NO MATCH
+[120.268s] MATCH mode=discovery ctx=none -> 1:1 offset=2
+```
+
+Locked **inside** 1:1 at word 2, so `بِسْمِ` and `اللَّهِ` had no verdict and
+never could. Same shape in Al-Baqarah: locked at 2:2, so 2:1 `الم` was stepped
+over and the ayah never appeared. Gap-fill only ever looked forwards.
+
+**1.5.3 A clipped word was condemned as a wrong one.** `سَمِ` is not a
+different word from `بِسْمِ`, it is part of it — the window boundary landed
+mid-word. Withholding it did not help: several windows clip the same word the
+same way, `EDGE_CONFIRMATIONS` reads that as agreement, and the word goes red
+anyway. Every session starts this way, because recitation starts before the
+microphone is listening.
+
+### Work
+
+- `QuranIndex._solo_ayah_index` — one-word ayahs, admitted only where that word
+  occurs exactly once in the whole Quran
+- `QuranIndex.rematch_near()` — align a transcription *backwards* from a known
+  position; fills no gaps, claims only what aligns, never crosses into the
+  previous surah
+- `RecitationTracker._remember_unplaced()` / `_fill_prelock()` — keep refused
+  transcriptions for `PRELOCK_BUFFER_SECONDS`, then re-read them once the
+  position is known
+- `_is_fragment()` — a recited word that is a prefix or suffix of the reference
+  is credited, not condemned, and at gap-fill strength so any window that hears
+  the word whole replaces it
+
+No new audio and no priors: the same evidence, read with the one piece of
+context it was missing.
+
+### What the result changes
+
+- **Tier 2 is now only about latency.** Its two symptoms have come apart: the
+  *words* lost before the lock are recovered, the *wait* is not. A reciter
+  still faces a blank page for 18.6s and then sees Al-Fatiha appear at once.
+  That is worth fixing, but it is no longer a correctness bug, so Tier 2 drops
+  below Tier 3 in priority.
+- **Tier 4.1 `heardRatio` is now partly redundant.** `_is_fragment` removed
+  both fragment false alarms in the benchmark (`يُهَا`/`يَاأَيُّهَا` and
+  `رَحْمَنِ`/`الرَّحْمَٰنِ`). Measure what is left before implementing it.
+- **One benchmark false alarm remains**, `أَلِيمٌ` for `عَظِيمٌ` in 2:7:11 —
+  `عَذَابٌ أَلِيمٌ` is the commoner phrase and the model prefers it. That is an
+  ASR substitution, not a matcher bug, which is Tier 5's argument.
+
+---
+
 # Tier 2 — Lock on immediately
 
-*Only start when Tier 1's gate passes. If Tier 1 showed the benchmark cannot
-see real sessions, do Tier 3 first.*
+*Re-scoped by Tier 1.5. The words lost before the lock are now recovered, so
+what is left here is **latency and wrong lock-ons**, not missing verdicts.
+That makes it less urgent than Tier 3, which is why Tier 3 should come first.*
 
 ### Why
 
@@ -172,7 +275,10 @@ correctly refuses all of them:
 | `الحمد لله رب العالمين` | 4 |
 
 The app is *correct* and *useless* — it waits for `مالك يوم الدين`, 18.6s into
-the most-recited surah in the Quran, with a blank page. The fix is not better
+the most-recited surah in the Quran, with a blank page. Since Tier 1.5 those
+18.6s are no longer *lost* — the whole opening appears at once when the lock
+finally lands — but a page that stays blank while you recite still reads as a
+broken app. The fix is not better
 matching, it is context. Tilawa reached the same conclusion independently:
 their remaining errors need "the tracker's `hint` (previous ayah / surah
 continuity), not more model training" (`lab/EXPERIMENTS.md`, finding 17).
@@ -187,6 +293,23 @@ continuity), not more model training" (`lab/EXPERIMENTS.md`, finding 17).
    starts a surah. People start at surah starts.
 3. **Tap a word on the Mushaf to start there.** `set_position()` is already
    written and tested in `recitation.py` and has never had a caller.
+4. **Do not lock onto the isti'adha.** `أعوذ بالله من الشيطان الرجيم` is not
+   Quran, but 16:98 is `فَاسْتَعِذْ بِاللَّهِ مِنَ الشَّيْطَانِ الرَّجِيمِ`,
+   so discovery locks on it confidently and lands 278 pages away:
+
+   ```
+   [16.195s] ASR   text="أَعُذْ بِاللَّهِ مِنَ الشِّيطَانِ الرَّجِيمِ"
+   [16.195s] MATCH mode=discovery ctx=none -> 16:98 offset=3
+   [16.196s] MUSHAF load page 278 (for 16:98)
+   [21.729s] TRACKER lost position -> falling back to discovery
+   [25.052s] TRACKER discovery -> tracking @ 2:2
+   ```
+
+   Cost in `logs/hifz-20260919-125436.log`: 9 seconds, a page load the reciter
+   never asked for, and six words painted in 16:98–99 that were never recited.
+   **The benchmark scores only the expected surah, so it cannot see any of
+   this** — `qafirun with auzu basmala` passes while the same isti'adha
+   derails a live session. Fixing the blindness matters more than the bug.
 
 ### Gate
 
@@ -200,8 +323,9 @@ python scripts/benchmark_recordings.py
 |---|---|---|
 | First word → first highlight (Al-Fatiha) | 18.6s | **< 3s** |
 | Discovery hit rate | 4 / 47 | **> 1 in 5** |
-| Wrong lock-ons (locked to the wrong ayah) | — | **0** |
-| Benchmark false alarms / caught | 4.6% / 2-2 | **no worse** |
+| Wrong lock-ons (locked to the wrong ayah) | 1 (isti'adha → 16:98) | **0** |
+| Words scored outside the surah recited | 6 | **0** |
+| Benchmark false alarms / caught | 0.6% / 2-2 | **no worse** |
 
 The mid-Baqarah run matters: it checks the page prior *helps* when right
 without *hurting* when the reciter is somewhere else entirely.

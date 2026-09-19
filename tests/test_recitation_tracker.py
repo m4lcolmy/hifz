@@ -1,6 +1,9 @@
 import unittest
 
-from src.config import TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS
+from src.config import (
+    TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
+    PRELOCK_BUFFER_SECONDS,
+)
 from src.core.quran import QuranIndex, VerseMatch, WordResult
 from src.core.page_map import PageMap
 from src.ui.recitation import RecitationTracker
@@ -234,14 +237,68 @@ class EvidenceScoringTests(unittest.TestCase):
 
         tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
             "match": self._match([
-                self._word(8, 3, 0, "ُونَ", "يُقِيمُونَ", False),      # edge
+                self._word(8, 3, 0, "فُقِيمُونَ", "يُقِيمُونَ", False),   # edge
                 self._word(8, 3, 2, "الصَّلَاةَ", "الصَّلَاةَ", True),
-                self._word(8, 3, 3, "وَمِمَّ", "وَمِمَّا", False),      # edge
+                self._word(8, 3, 3, "فَمِمَّا", "وَمِمَّا", False),        # edge
             ])})
         final = mushaf.final()
         self.assertNotIn((8, 3, 0), final)   # withheld, not painted red
         self.assertNotIn((8, 3, 3), final)
         self.assertEqual(final[(8, 3, 2)], True)
+
+    def test_a_clipped_word_at_the_edge_is_credited_not_condemned(self):
+        """"ُونَ" is not a different word from "يُقِيمُونَ", it is part of it.
+
+        A window boundary landing mid-word is the one thing that makes the
+        model return a piece of a word, and the piece is of the *right* word.
+        Withholding it instead only defers the problem: several windows clip
+        the same word the same way, EDGE_CONFIRMATIONS counts that as
+        agreement, and the word goes red anyway.
+        """
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker.set_position(8, 3, 0)
+
+        for _ in range(EDGE_CONFIRMATIONS + 1):
+            tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
+                "match": self._match([
+                    self._word(8, 3, 0, "ُونَ", "يُقِيمُونَ", False),      # edge
+                    self._word(8, 3, 2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+                    self._word(8, 3, 3, "وَمِمَّ", "وَمِمَّا", False),      # edge
+                ])})
+
+        final = mushaf.final()
+        self.assertIs(final[(8, 3, 0)], True)
+        self.assertIs(final[(8, 3, 3)], True)
+
+    def test_a_whole_word_look_overrides_a_clipped_one(self):
+        """The credit is a placeholder, not a verdict — it must give way.
+
+        Otherwise crediting a fragment would make a word permanently green and
+        hide a real mistake in it.
+        """
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker.set_position(8, 3, 0)
+
+        # Clipped at the edge, then heard whole and wrong in the middle.
+        tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
+            "match": self._match([
+                self._word(8, 3, 3, "وَمِمَّ", "وَمِمَّا", False),        # edge
+                self._word(8, 3, 4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
+            ])})
+        self.assertIs(mushaf.final()[(8, 3, 3)], True)
+
+        tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
+            "match": self._match([
+                self._word(8, 3, 2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+                self._word(8, 3, 3, "فَمِمَّا", "وَمِمَّا", False),        # heard whole
+                self._word(8, 3, 4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
+            ])})
+        self.assertIs(
+            mushaf.final()[(8, 3, 3)], False,
+            "a guess about clipped audio outranked a word heard whole",
+        )
 
     def test_finalize_commits_the_last_window(self):
         """A mistake in the final word must still be reported on stop."""
@@ -402,6 +459,149 @@ class AlFatihaSessionTests(unittest.TestCase):
         )
         self.assertTrue(all(final[(1, 6, i)] is None for i in range(3)),
                         "skipped words should be amber, not green or red")
+
+
+class OneWordAyahTests(unittest.TestCase):
+    """An ayah can be a single word, and discovery demanded two.
+
+    So الٓمٓ, يس, وَالْعَصْرِ could never be found — only stepped over on the
+    way to the next ayah. Reciting Al-Baqarah from the top, الم was
+    transcribed cleanly twice and skipped both times.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+
+    def test_a_unique_one_word_ayah_is_found_from_that_one_word(self):
+        for word, expected in (("يس", (36, 1)),
+                               ("طه", (20, 1)),
+                               ("كهيعص", (19, 1)),
+                               ("والعصر", (103, 1))):
+            with self.subTest(word=word):
+                match = self.index.discover(word)
+                self.assertIsNotNone(match, f"{word} was not found")
+                self.assertEqual((match.surah_id, match.ayah_id), expected)
+
+    def test_an_ambiguous_one_word_ayah_is_still_refused(self):
+        """الم opens six surahs, and normalization merges it with أَلَمْ تَرَ.
+
+        Hearing it genuinely does not say where the reciter is, so refusing is
+        correct — the pre-lock re-match is what eventually scores it.
+        """
+        for word in ("الم", "حم", "طسم"):
+            with self.subTest(word=word):
+                self.assertIsNone(self.index.discover(word))
+
+    def test_one_word_is_not_a_licence_to_match_anything(self):
+        """Only a word that is an entire ayah, and unique, may lock on one word."""
+        for word in ("الله", "قل", "الرحمن", "الذين"):
+            with self.subTest(word=word):
+                self.assertIsNone(self.index.discover(word))
+
+
+class BeforeTheLockTests(unittest.TestCase):
+    """Discovery refuses ambiguous openings — and every session opens with one.
+
+    بسم الله الرحمن الرحيم matches 114 places, so it is transcribed, rejected
+    and thrown away. The words were recited and understood; only the position
+    was unknown. Once it is known they can be placed after all.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+        cls.page_map = PageMap()
+
+    def _tracker(self, mushaf):
+        return RecitationTracker(mushaf, self.page_map, self.index,
+                                 clock=FakeClock())
+
+    def _recite(self, tracker, *chunks):
+        for text in chunks:
+            ctx = (tracker.last_surah, tracker.last_ayah, tracker.last_word_index)
+            match = (self.index.track(text, *ctx) if tracker.mode == "tracking"
+                     else self.index.discover(text))
+            tracker.on_result({"text": text, "match": match,
+                               "mode": tracker.mode, "attempted": True})
+
+    def test_the_basmala_is_scored_once_al_fatiha_is_identified(self):
+        """Al-Fatiha locked on الرحمن الرحيم and lost بسم الله every time.
+
+        The transcriptions are verbatim from logs/hifz-20260919-125436.log,
+        clipped first word and all: capture starts after the reciter does, so
+        the opening word of a session is the one most likely to be cut.
+        """
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+
+        self._recite(tracker,
+                     "سْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",   # 114 places — refused
+                     "رَحْمَنِ الرَّحِيمِ الْحَمْدُ")          # locks, at 1:1:2
+        tracker.finalize()
+
+        final = mushaf.final()
+        self.assertEqual((tracker.last_surah, tracker.last_ayah), (1, 2))
+        for i in range(4):
+            self.assertIn((1, 1, i), final,
+                          f"1:1:{i} was recited but never shown")
+        self.assertTrue(all(final[(1, 1, i)] for i in range(4)),
+                        "the basmala was recited correctly, so it is green")
+
+    def test_alif_lam_mim_is_scored_once_al_baqarah_is_identified(self):
+        """الم is ambiguous alone, but not once ذلك الكتاب says which surah."""
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+
+        self._recite(tracker, "الم", "ذلك الكتاب لا ريب فيه")
+
+        final = mushaf.final()
+        self.assertEqual(tracker.last_surah, 2)
+        self.assertIs(final.get((2, 1, 0)), True,
+                      "الم was recited, transcribed cleanly, and never shown")
+
+    def test_the_re_match_does_not_reach_into_the_surah_before(self):
+        """Al-Fatiha sits immediately before Al-Baqarah in the flat text.
+
+        Looking backwards from 2:2 reaches it within a few words, so the
+        window has to stop at the surah boundary. Someone who opens with
+        Al-Baqarah did not recite the end of Al-Fatiha first.
+        """
+        self.assertIsNone(
+            self.index.rematch_near("غير المغضوب عليهم ولا الضالين", 2, 2, 0),
+            "a re-match anchored in Al-Baqarah claimed words in Al-Fatiha",
+        )
+
+    def test_noise_before_the_lock_is_not_turned_into_verdicts(self):
+        """Breath and throat-clearing must not become words on the page."""
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+
+        self._recite(tracker, "اه اه", "همم", "ذلك الكتاب لا ريب فيه")
+
+        self.assertEqual(tracker.last_surah, 2)
+        self.assertFalse(
+            [k for k in mushaf.final() if k < (2, 2, 0)],
+            "noise recited before the lock was scored as recitation",
+        )
+
+    def test_the_buffer_does_not_outlive_its_window(self):
+        """A phrase from minutes ago must not be placed against a later lock."""
+        mushaf = DummyMushafView()
+        clock = FakeClock()
+        tracker = RecitationTracker(mushaf, self.page_map, self.index,
+                                    clock=clock)
+
+        tracker.on_result({"text": "بسم الله الرحمن الرحيم", "match": None,
+                           "mode": "discovery", "attempted": True})
+        clock.advance(PRELOCK_BUFFER_SECONDS + 1)
+
+        text = "الرحمن الرحيم الحمد لله"
+        tracker.on_result({"text": text, "match": self.index.discover(text),
+                           "mode": "discovery", "attempted": True})
+
+        self.assertNotIn((1, 1, 0), mushaf.final(),
+                         "a stale transcription was placed against a new lock")
 
 
 if __name__ == "__main__":

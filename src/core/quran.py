@@ -18,6 +18,7 @@ from src.config import (
     DISCOVERY_SHORT_NGRAM, DISCOVERY_SHORT_MAX_WORDS,
     TRACKING_WINDOW, TRACKING_MAX_GAP, TRACKING_MIN_MATCHES,
     TRACKING_WEAK_EVIDENCE, TRACKING_WEAK_MAX_DRIFT,
+    DISCOVERY_SOLO_AYAH, PRELOCK_LOOKBACK_WORDS, PRELOCK_MIN_MATCHES,
 )
 
 
@@ -65,6 +66,10 @@ class QuranIndex:
         # Position map: (surah, ayah, word_idx) -> flat_pos
         self._pos_map: dict[tuple[int, int, int], int] = {}
 
+        # Ayahs that are a single word, keyed by that word — but only where
+        # the word occurs nowhere else in the Quran. See discover().
+        self._solo_ayah_index: dict[str, int] = {}
+
         self._load()
 
     def _load(self):
@@ -86,6 +91,21 @@ class QuranIndex:
                         self._flat.append((norm, w, s_id, a_id, word_idx))
                         self._word_index.setdefault(norm, []).append(pos)
                         self._pos_map[(s_id, a_id, word_idx)] = pos
+
+        # Ayahs made of exactly one word, where that word appears nowhere
+        # else. Uniqueness is checked against the whole Quran and not just
+        # against other solo ayahs: الم is a one-word ayah six times over, and
+        # normalization also merges it with the ألم of أَلَمْ تَرَ, so it is
+        # excluded — correctly, since hearing الم really does not say which of
+        # the six surahs was opened.
+        for surah in self._surahs:
+            for verse in surah["verses"]:
+                words = [w for w in split_words(verse["text"]) if normalize(w)]
+                if len(words) != 1:
+                    continue
+                norm = normalize(words[0])
+                if len(self._word_index.get(norm, ())) == 1:
+                    self._solo_ayah_index[norm] = self._word_index[norm][0]
 
         # Build N-gram inverted index for discovery
         for n in DISCOVERY_NGRAM_SIZES:
@@ -112,6 +132,15 @@ class QuranIndex:
         trans_norm = [normalize(w) for w in trans_words]
 
         if len(trans_norm) < DISCOVERY_MIN_WORDS:
+            # One word is normally far too little to place, but an ayah that
+            # *is* one word has no longer phrase to wait for: hold out for a
+            # second word and يس or وَالْعَصْرِ can never be found at all, only
+            # stepped over on the way to the next ayah.
+            if (DISCOVERY_SOLO_AYAH and len(trans_norm) == 1
+                    and trans_norm[0] in self._solo_ayah_index):
+                return self._build_match(
+                    self._solo_ayah_index[trans_norm[0]], trans_words
+                )
             return None
 
         # Try N-grams from largest to smallest, using the TAIL of transcription
@@ -258,6 +287,58 @@ class QuranIndex:
             gap_start = context_pos
 
         return self._build_match(best_start, trans_words, gap_start=gap_start)
+
+    def rematch_near(self, transcription: str, surah: int, ayah: int,
+                     word_index: int,
+                     lookback: int = PRELOCK_LOOKBACK_WORDS) -> "VerseMatch | None":
+        """Align a transcription against the words leading up to a position.
+
+        Discovery only answers when a phrase is unique, so everything recited
+        before the lock is understood and then discarded — the opening of
+        Al-Fatiha matches 114 places, and الم six surahs. Once a later phrase
+        pins the position down, those earlier transcriptions can be placed
+        after all, because the question was never what was said but where.
+
+        Unlike track() this looks *backwards* and fills no gaps: it claims
+        only the words it can actually align, and never past the start of the
+        surah the lock landed in.
+        """
+        trans_words = split_words(transcription)
+        trans_norm = [normalize(w) for w in trans_words]
+        if not trans_norm:
+            return None
+
+        anchor = self._pos_map.get((surah, ayah, word_index))
+        if anchor is None:
+            return None
+
+        window_start = max(0, anchor - lookback)
+        window_end = min(len(self._flat), anchor + len(trans_norm))
+        if window_start >= window_end:
+            return None
+
+        window_norm = [self._flat[i][0] for i in range(window_start, window_end)]
+        sm = difflib.SequenceMatcher(None, trans_norm, window_norm)
+        blocks = [b for b in sm.get_matching_blocks() if b.size > 0]
+        if not blocks:
+            return None
+
+        # No pointer vouches for these chunks — discovery has already refused
+        # them once — so the alignment has to carry the whole weight. Several
+        # words lining up is enough; so is a short transcription that lines up
+        # completely, which is the only evidence a one-word ayah can offer.
+        match_count = sum(b.size for b in blocks)
+        if match_count < PRELOCK_MIN_MATCHES and match_count < len(trans_norm):
+            return None
+
+        best = max(blocks, key=lambda b: (b.size, -b.a))
+        best_start = max(0, window_start + best.b - best.a)
+        if best_start >= anchor:
+            return None                              # nothing new before the lock
+        if self._flat[best_start][2] != surah:
+            return None                              # do not reach into the surah before
+
+        return self._build_match(best_start, trans_words)
 
     def words_between(self, start: tuple[int, int, int], end: tuple[int, int, int],
                       limit: int = 40) -> list[tuple[int, int, int, str]]:

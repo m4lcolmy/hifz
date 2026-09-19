@@ -101,3 +101,25 @@ REDISCOVERY_MAX_GAP = 40
 # half, so its verdict is withheld. Seen wrong at the edge of this many
 # different windows, it is treated as genuinely wrong.
 EDGE_CONFIRMATIONS = 2
+
+# ── Before the lock ───────────────────────────────────────────────────
+# Discovery refuses ambiguous openings, so the first seconds of a session are
+# transcribed, rejected and thrown away — بسم الله الرحمن الرحيم matches 114
+# places and الم matches six surahs plus every ألم. The words were recited and
+# the audio was understood; only the *position* was unknown. Once it is known,
+# those transcriptions are re-matched against the words just before the lock.
+PRELOCK_BUFFER_SECONDS = 12.0   # how far back a re-match may reach
+PRELOCK_MAX_CHUNKS = 40         # and at most this many transcriptions
+PRELOCK_LOOKBACK_WORDS = 25     # reference words before the lock to search
+
+# A word the reciter said before the lock is only claimed when the whole
+# transcription lines up, or when at least this many words do. Discovery has
+# already refused these chunks, so there is no pointer vouching for them.
+PRELOCK_MIN_MATCHES = 2
+
+# ── One-word ayahs ────────────────────────────────────────────────────
+# الٓمٓ, كٓهيعٓصٓ, طه, يس, وَالْعَصْرِ — an ayah can be a single word, and the
+# two-word discovery floor means such an ayah can never be found, only stepped
+# over. Where that one word occurs exactly once in the whole Quran it is the
+# least ambiguous phrase there is, so one word is enough.
+DISCOVERY_SOLO_AYAH = True
