@@ -630,6 +630,79 @@ class BeforeTheLockTests(unittest.TestCase):
                          "a stale transcription was placed against a new lock")
 
 
+class UntrustedRegionTests(unittest.TestCase):
+    """Tilawa's rule: never condemn a word in a region you do not trust."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page_map = PageMap()
+
+    def _word(self, idx, recited, reference, correct):
+        return WordResult(recited=recited, reference=reference,
+                          is_correct=correct, surah_id=8, ayah_id=3,
+                          reference_index=idx)
+
+    def _feed(self, tracker, words):
+        tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
+            "match": VerseMatch(surah_id=8, surah_name="Al-Anfal", ayah_id=3,
+                                start_offset=0, words=words)})
+
+    def test_a_wrong_word_with_no_confident_neighbour_is_not_condemned(self):
+        """Surrounded by words we also mis-heard, a wrong verdict is far more
+        likely to be the alignment slipping than the reciter erring."""
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker.set_position(8, 3, 0)
+
+        self._feed(tracker, [
+            self._word(1, "خَطَأٌ", "يُقِيمُونَ", False),
+            self._word(2, "فُلَانٌ", "الصَّلَاةَ", False),     # the word in question
+            self._word(3, "خَطَأٌ", "وَمِمَّا", False),
+        ])
+        tracker.finalize()
+        self.assertIsNone(
+            mushaf.final().get((8, 3, 2)),
+            "condemned a word in a stretch where nothing else was understood",
+        )
+
+    def test_a_wrong_word_beside_a_confident_one_is_still_condemned(self):
+        """The rule must not become a way of never reporting anything —
+        one clear neighbour is enough, or a mistake next to a mis-heard word
+        would be silently dropped. The benchmark's Al-Hujurat mistake is
+        exactly that case, and requiring *both* neighbours lost it."""
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker.set_position(8, 3, 0)
+
+        self._feed(tracker, [
+            self._word(1, "يُقِيمُونَ", "يُقِيمُونَ", True),
+            self._word(2, "فُلَانٌ", "الصَّلَاةَ", False),
+            self._word(3, "خَطَأٌ", "وَمِمَّا", False),
+        ])
+        tracker.finalize()
+        self.assertIs(mushaf.final().get((8, 3, 2)), False)
+
+    def test_confirming_a_neighbour_later_licenses_the_verdict(self):
+        """A word's colour can change without new evidence about that word."""
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker.set_position(8, 3, 0)
+
+        self._feed(tracker, [
+            self._word(1, "خَطَأٌ", "يُقِيمُونَ", False),
+            self._word(2, "فُلَانٌ", "الصَّلَاةَ", False),
+            self._word(3, "خَطَأٌ", "وَمِمَّا", False),
+        ])
+        self.assertIsNone(mushaf.final().get((8, 3, 2)))
+
+        self._feed(tracker, [
+            self._word(1, "يُقِيمُونَ", "يُقِيمُونَ", True),
+            self._word(2, "فُلَانٌ", "الصَّلَاةَ", False),
+        ])
+        tracker.finalize()
+        self.assertIs(mushaf.final().get((8, 3, 2)), False)
+
+
 class BasmalaTests(unittest.TestCase):
     """It is an ayah only at 1:1, and recited before every surah."""
 

@@ -173,6 +173,8 @@ class RecitationTracker:
         # page. Recognising it is the difference between "the app is thinking"
         # and "the app is broken".
         self._basmala_heard = False
+        # What the Mushaf currently shows, so a repaint only pushes changes.
+        self._painted: dict[tuple[int, int, int], object] = {}
 
     @property
     def mode(self) -> str:
@@ -193,6 +195,7 @@ class RecitationTracker:
         self._last_known = None
         self._pending.clear()
         self._basmala_heard = False
+        self._painted.clear()
 
     def set_position(self, surah: int, ayah: int, word_index: int = 0):
         """Manually set position (e.g. user tapped on Mushaf).
@@ -494,9 +497,55 @@ class RecitationTracker:
 
         self._scored[word_id] = (quality, w)
         self._withheld.pop(word_id, None)
-        self._mushaf.update_recitation(
-            w.surah_id, w.ayah_id, w.reference_index, self._status(w)
-        )
+        # Painting is deferred to _repaint(): whether a word may be shown as
+        # wrong depends on its neighbours, which may not have been heard yet.
+        self._repaint()
+
+    # ── Is this verdict safe to show as an error? ──────────────────────
+
+    def _neighbours_clear(self, word_id) -> bool:
+        """Is this word surrounded by words we are confident about?
+
+        Tilawa's rule (`correction.ts`): never condemn a word in a region you
+        do not trust. A wrong verdict between two words that were themselves
+        mis-heard is far more likely to be the alignment slipping than the
+        reciter erring — and both neighbours must be in the *same ayah*, so a
+        word at an ayah edge is never condemned on the strength of whatever
+        the neighbouring ayah happened to do.
+        """
+        surah, ayah, index = word_id
+        clear = 0
+        for neighbour in ((surah, ayah, index - 1), (surah, ayah, index + 1)):
+            entry = self._scored.get(neighbour)
+            if entry is not None and self._status(entry[1]) is True:
+                clear += 1
+        return clear >= 1
+
+    def _effective_status(self, word_id):
+        """The colour a word actually gets, after the neighbour rule."""
+        entry = self._scored.get(word_id)
+        if entry is None:
+            return None
+        status = self._status(entry[1])
+        if status is not False:
+            return status
+        # Wrong, but only sayable as wrong in a region we trust. Otherwise it
+        # is amber: something happened here that we could not read.
+        return False if self._neighbours_clear(word_id) else None
+
+    def _repaint(self):
+        """Push every verdict whose colour has changed since last time.
+
+        A word's colour can change without new evidence about that word: its
+        neighbour being confirmed is what licenses it to be shown as wrong.
+        """
+        for word_id in self._order:
+            if word_id not in self._scored:
+                continue
+            status = self._effective_status(word_id)
+            if self._painted.get(word_id, "unset") != status:
+                self._painted[word_id] = status
+                self._mushaf.update_recitation(*word_id, status)
 
     def finalize(self) -> str:
         """Commit verdicts still waiting for a better look.
@@ -596,7 +645,7 @@ class RecitationTracker:
                     blocks.append(self._paragraph(current_key, spans))
                 current_key = key
                 spans = []
-            spans.append(self._span(w))
+            spans.append(self._span(w, self._effective_status(word_id)))
 
         if spans:
             blocks.append(self._paragraph(current_key, spans))
@@ -632,10 +681,10 @@ class RecitationTracker:
         )
 
     @staticmethod
-    def _span(w) -> str:
-        if w.recited and w.is_correct:
+    def _span(w, status=None) -> str:
+        if status is True:
             return f'<span style="color:{CORRECT_COLOR};">{w.recited}</span>'
-        if w.recited and not w.is_correct:
+        if status is False:
             return f'<span style="color:{INCORRECT_COLOR};">{w.recited}</span>'
         return (
             f'<span style="color:{MISSED_COLOR}; text-decoration:underline;">'
