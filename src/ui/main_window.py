@@ -64,7 +64,9 @@ class MainWindow(QMainWindow):
         self._load_model()
 
         # Recitation tracker (owns position state + result rendering)
-        self._tracker = RecitationTracker(self.mushaf_view, self._page_map)
+        self._tracker = RecitationTracker(
+            self.mushaf_view, self._page_map, self._quran_index
+        )
 
     def _center_window(self):
         """Center the main window on the current screen."""

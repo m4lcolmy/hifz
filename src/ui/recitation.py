@@ -22,7 +22,12 @@ A word may therefore turn from red to green as better evidence arrives, but
 never the other way around on weaker evidence.
 """
 
-from src.config import TRACKING_MAX_MISSES, EDGE_CONFIRMATIONS
+import time
+
+from src.config import (
+    TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
+    REDISCOVERY_MAX_GAP,
+)
 from src.core.debug import log
 from src.core.page_map import PageMap
 from src.ui.mushaf_view import MushafView
@@ -38,6 +43,43 @@ def _rank(word) -> int:
     return 2              # heard and wrong
 
 
+def _quality(word, at_edge: bool) -> tuple[int, int, int]:
+    """How much this observation is worth, highest wins.
+
+    Ordered deliberately:
+
+    1. Was the word actually heard? A gap-fill means the matcher inferred
+       the reciter skipped it — that is the *absence* of evidence, and it
+       must never overwrite a word some window actually heard. (1:7:8
+       الضَّالِّينَ was recited correctly, then erased by a gap-fill when the
+       next chunk matched the start of Al-Baqarah.)
+    2. The verdict itself. Correct outranks wrong, so once any window has
+       heard a word correctly it stays correct — a later window that
+       mis-hears it cannot take that away. (1:7:5 الْمَغْضُوبِ was confirmed
+       correct and then downgraded to الْمَغْرُوبِ.)
+    3. Only then, whether the word sat at a window edge where the boundary
+       may have cut it in half.
+    """
+    heard = 0 if (word.is_gap_filled or not word.recited) else 1
+    return (heard, _rank(word), 0 if at_edge else 1)
+
+
+class _GapWord:
+    """A reference word the reciter covered while the tracker was lost."""
+
+    __slots__ = ("surah_id", "ayah_id", "reference_index", "reference",
+                 "recited", "is_correct", "is_gap_filled")
+
+    def __init__(self, surah_id, ayah_id, reference_index, reference):
+        self.surah_id = surah_id
+        self.ayah_id = ayah_id
+        self.reference_index = reference_index
+        self.reference = reference
+        self.recited = ""
+        self.is_correct = False
+        self.is_gap_filled = True
+
+
 class RecitationTracker:
     """Tracks recitation progress and renders results to the UI.
 
@@ -50,9 +92,15 @@ class RecitationTracker:
       - "tracking": locked to position, local matching only
     """
 
-    def __init__(self, mushaf_view: MushafView, page_map: PageMap):
+    def __init__(self, mushaf_view: MushafView, page_map: PageMap,
+                 quran_index=None, clock=time.monotonic):
         self._mushaf = mushaf_view
         self._page_map = page_map
+        # Only needed to fill in an ayah recited while the tracker was lost.
+        self._quran_index = quran_index
+        # Injectable so the offline benchmark can drive its own virtual clock
+        # and reproduce the live timing instead of running at wall speed.
+        self._clock = clock
 
         # Tracking recitation progress
         self.last_surah: int | None = None
@@ -72,6 +120,10 @@ class RecitationTracker:
         # Mode state machine
         self._mode: str = "discovery"
         self._misses: int = 0  # consecutive failed matches while tracking
+        self._first_miss_at: float | None = None
+        # Survives a fallback, so a re-lock knows where the reciter was last
+        # seen and can fill in whatever they recited while we were lost.
+        self._last_known: tuple[int, int, int] | None = None
 
     @property
     def mode(self) -> str:
@@ -88,6 +140,8 @@ class RecitationTracker:
         self._surah_names.clear()
         self._mode = "discovery"
         self._misses = 0
+        self._first_miss_at = None
+        self._last_known = None
 
     def set_position(self, surah: int, ayah: int, word_index: int = 0):
         """Manually set position (e.g. user tapped on Mushaf).
@@ -99,6 +153,8 @@ class RecitationTracker:
         self.last_word_index = word_index
         self._mode = "tracking"
         self._misses = 0
+        self._first_miss_at = None
+        self._last_known = (surah, ayah, word_index)
 
     # ── Result handling ────────────────────────────────────────────────
 
@@ -128,8 +184,10 @@ class RecitationTracker:
             # Discovery succeeded — unique match found!
             self._mode = "tracking"
             self._misses = 0
+            self._first_miss_at = None
             log.count("tracker_locked")
             log.tracker(f"discovery -> tracking @ {match.surah_id}:{match.ayah_id}")
+            self._fill_rediscovery_gap(match)
             # Fall through to process the match
 
         if match is None:
@@ -137,14 +195,32 @@ class RecitationTracker:
             # reciter has moved somewhere we are not following — drop back to
             # discovery rather than staying stuck on a stale pointer.
             if result.get("attempted", True):
+                now = self._clock()
+                if self._first_miss_at is None:
+                    self._first_miss_at = now
                 self._misses += 1
-                log.tracker(f"miss {self._misses}/{TRACKING_MAX_MISSES} "
-                            f"@ {self.last_surah}:{self.last_ayah}:{self.last_word_index}")
-                if self._misses >= TRACKING_MAX_MISSES:
+                silent_for = now - self._first_miss_at
+
+                log.tracker(
+                    f"miss {self._misses}/{TRACKING_MAX_MISSES} "
+                    f"({silent_for:.1f}s/{TRACKING_MAX_MISS_SECONDS:.0f}s) "
+                    f"@ {self.last_surah}:{self.last_ayah}:{self.last_word_index}"
+                )
+
+                # Both must be true. A burst of breath fragments between two
+                # ayahs trips the count in under a second; only sustained
+                # failure means the reciter really has gone somewhere else.
+                if (self._misses >= TRACKING_MAX_MISSES
+                        and silent_for >= TRACKING_MAX_MISS_SECONDS):
                     log.count("tracker_fallback")
                     log.tracker("lost position -> falling back to discovery")
+                    if self.last_surah is not None:
+                        self._last_known = (
+                            self.last_surah, self.last_ayah, self.last_word_index
+                        )
                     self._mode = "discovery"
                     self._misses = 0
+                    self._first_miss_at = None
                     self.last_surah = None
                     self.last_ayah = None
                     self.last_word_index = -1
@@ -154,8 +230,49 @@ class RecitationTracker:
             )
 
         self._misses = 0
+        self._first_miss_at = None
         self._absorb(match)
+        if self.last_surah is not None:
+            self._last_known = (self.last_surah, self.last_ayah, self.last_word_index)
         return self._render()
+
+    def _fill_rediscovery_gap(self, match):
+        """Mark words recited while the tracker had lost the reciter.
+
+        Tracking dies, discovery re-locks further along, and everything in
+        between was recited but never scored — a whole ayah simply never
+        appeared on the page. (1:6 اهدنا الصراط المستقيم vanished this way.)
+        """
+        if self._quran_index is None or self._last_known is None:
+            return
+        if self._last_known[0] != match.surah_id:
+            return  # a jump to another surah is not a dropped ayah
+
+        first = next(
+            (w for w in match.words
+             if w.surah_id is not None and w.reference_index is not None),
+            None,
+        )
+        if first is None:
+            return
+
+        gap = self._quran_index.words_between(
+            self._last_known,
+            (first.surah_id, first.ayah_id, first.reference_index),
+            limit=REDISCOVERY_MAX_GAP,
+        )
+        if not gap:
+            return
+
+        log.tracker(f"filling {len(gap)} word(s) recited while position was lost")
+        log.count("rediscovery_gap_filled", len(gap))
+        for surah_id, ayah_id, word_index, text in gap:
+            word_id = (surah_id, ayah_id, word_index)
+            if word_id in self._scored:
+                continue
+            self._surah_names.setdefault(surah_id, match.surah_name)
+            self._commit(_GapWord(surah_id, ayah_id, word_index, text),
+                         (0, 1, 1))
 
     def _absorb(self, match):
         """Merge one match's word verdicts into the running best-evidence map."""
@@ -174,6 +291,18 @@ class RecitationTracker:
             word_id = (w.surah_id, w.ayah_id, w.reference_index)
             at_edge = word_id in edge_ids
 
+            # The pointer records where the reciter IS, not what has been
+            # scored. It used to be updated at the bottom of this loop, after
+            # several `continue`s — so re-hearing a word already scored left
+            # it behind, track() kept searching from a position the reciter
+            # had left seconds ago, and three failures dropped us back into
+            # discovery. That is what lost the position three times in one
+            # recitation of Al-Fatiha.
+            if w.recited:
+                self.last_surah = w.surah_id
+                self.last_ayah = w.ayah_id
+                self.last_word_index = w.reference_index
+
             # A word at the window edge was probably cut in half by the
             # boundary, so the model heard a fragment ("ِينَ" for "الَّذِينَ").
             # That is enough to confirm a word but never to condemn one —
@@ -186,20 +315,14 @@ class RecitationTracker:
                     # that comes back wrong at the edge of several of them is
                     # wrong, not truncated. Stop withholding it.
                     if seen + 1 >= EDGE_CONFIRMATIONS:
-                        self._commit(w, (0, 2))
+                        self._commit(w, _quality(w, at_edge=True))
                         log.count("edge_word_confirmed")
-                if w.recited:
-                    self.last_surah = w.surah_id
-                    self.last_ayah = w.ayah_id
-                    self.last_word_index = w.reference_index
                 log.count("edge_word_withheld")
                 continue
 
             self._withheld.pop(word_id, None)
 
-            # Evidence quality: a word seen whole outranks one seen at the
-            # edge of the audio window, where the model only heard a fragment.
-            quality = (0 if at_edge else 1, _rank(w))
+            quality = _quality(w, at_edge)
 
             previous = self._scored.get(word_id)
             if previous is not None and previous[0] >= quality:
@@ -214,13 +337,6 @@ class RecitationTracker:
                 current_page = page_num
 
             self._commit(w, quality, previous)
-
-            # Keep the pointer in sync — this is what lets the next chunk use
-            # local tracking instead of searching the whole Quran again.
-            if w.recited:
-                self.last_surah = w.surah_id
-                self.last_ayah = w.ayah_id
-                self.last_word_index = w.reference_index
 
     def _commit(self, w, quality, previous=None):
         """Record a verdict and paint it on the page."""
@@ -254,7 +370,7 @@ class RecitationTracker:
         """
         for word_id, (_seen, w, observed_at) in list(self._withheld.items()):
             if observed_at == self._observations and word_id not in self._scored:
-                self._commit(w, (0, 2))
+                self._commit(w, _quality(w, at_edge=True))
                 log.count("edge_word_committed_on_stop")
         self._withheld.clear()
         return self._render()

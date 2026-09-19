@@ -86,6 +86,16 @@ TRACKING_MIN_MATCHES = 1
 TRACKING_WEAK_EVIDENCE = 2     # matches at or below this count count as weak
 TRACKING_WEAK_MAX_DRIFT = 4    # words a weak match may sit from the pointer
 TRACKING_MAX_MISSES = 3      # consecutive failed matches before re-discovery
+# ...but only once this much time has also passed. Pausing between ayahs is
+# correct recitation, and during the pause the model emits breath fragments
+# that cannot match. Three of those at 300 ms apart is under a second — far
+# shorter than a normal breath — so a count alone threw the position away
+# every time the reciter stopped to breathe.
+TRACKING_MAX_MISS_SECONDS = 4.0
+# After re-discovery, if the new position is ahead of where we lost the
+# reciter in the same surah, the words in between were recited but never
+# shown. Fill them in, up to this many words.
+REDISCOVERY_MAX_GAP = 40
 
 # A word transcribed wrong at the edge of an audio window was probably cut in
 # half, so its verdict is withheld. Seen wrong at the edge of this many

@@ -1,0 +1,414 @@
+# Roadmap
+
+Work is grouped into tiers. **Each tier ends with a measurement, and the
+result decides what the next tier should be.** Do not start a tier before
+running the previous tier's gate — the numbers have already changed the plan
+twice, and both times the change was one nobody predicted from reading code.
+
+Every tier below lists:
+
+- **Why** — the evidence that makes it worth doing
+- **Work** — the actual changes
+- **Gate** — the exact command and the number that has to move
+- **What the result changes** — how the next tiers get re-planned
+
+Two numbers must be reported together, always:
+
+| Number | Meaning | Direction |
+|---|---|---|
+| **False alarm rate** | correct words painted red | down |
+| **Deliberate mistakes caught** | real errors still detected | must stay 2/2 |
+
+A change that improves the first by damaging the second is a regression. The
+benchmark prints both for this reason.
+
+**Baseline today:** 4.6% false alarms, 2/2 caught, 27 unit tests, 63 search
+cases. But see Tier 1 — the benchmark is currently blind to how the app
+behaves in a real session.
+
+---
+
+## The evidence this plan is built on
+
+A full recitation of Al-Fatiha, `logs/hifz-20260919-122520.log`, 55.9s:
+
+| | |
+|---|---|
+| Ayahs shown on the page | **1:4, 1:5, 1:7** |
+| Ayahs never shown at all | **1:1, 1:2, 1:3, 1:6** |
+| Words given a verdict | **16 of 29** |
+| First word → first highlight | **18.6s** |
+| Tracking lost and re-discovered | **3 times in 56s** |
+| Discovery attempts / hits | 47 / 4 |
+
+The 11-recording benchmark reports 4.6% false alarms on the same code. Both
+are true: the recordings are short, clean and forward-only, so they never
+exercise pausing between ayahs or running long enough for the pointer to
+drift. **A real session is a harder test than the entire benchmark.** Fixing
+that blindness is Tier 1's real purpose.
+
+---
+
+# Tier 1 — Stop losing the reciter ✅ DONE
+
+**Gate result** (same session replayed with `scripts/replay_session.py`):
+
+| Measure | Before | After | Target |
+|---|---|---|---|
+| Al-Fatiha ayahs shown | 3 / 7 | **4 / 7** | 7/7 — *blocked on Tier 2* |
+| Words given a verdict | 16 / 29 | **20 / 29** | ≥27 |
+| Tracking losses | 3 | **0** ✅ | 0 |
+| 1:6 (vanished ayah) | missing | **3/3 shown** ✅ | shown |
+| Benchmark false alarms | 4.6% | **2.0%** ✅ | ≤4.6% |
+| Mistakes caught | 2/2 | **2/2** ✅ | 2/2 |
+| Unit tests | 27 | **32** ✅ | pass |
+
+Every ayah *after* lock-on is now complete. The three still missing —
+1:1, 1:2, 1:3 — are the ones recited *before* discovery could lock, and
+first-highlight is still 18.6s. **That is exactly Tier 2, confirmed necessary
+and now the entire remaining gap.**
+
+Also added: `scripts/replay_session.py`, which re-runs a session log through
+matching, tracking and scoring without the audio. Any past log is now a
+repeatable test of everything downstream of the model.
+
+*Three of the five were regressions introduced by the previous round of work.*
+
+### Why
+
+**1.1 The tracking pointer stops advancing over already-scored words.**
+`src/ui/recitation.py`, `_absorb()`: when a word already has equal or better
+evidence we `continue`, and that skips the pointer update at the bottom of the
+loop. Re-hearing a word you have already scored does not move the pointer.
+
+```
+[33.283s] MATCH mode=tracking ctx=1:4:0 -> 1:4 offset=1
+[33.560s] MATCH mode=tracking ctx=1:4:0 -> NO MATCH
+[34.453s] MATCH mode=tracking ctx=1:4:0 -> NO MATCH
+[34.758s] TRACKER lost position -> falling back to discovery
+```
+
+The same stale context is reused 4–6 times in a row all through the log. This
+causes **all three** lost positions.
+
+**1.2 "Missed" overrides a word already confirmed correct.**
+
+```
+[49.486s] ASR   text="الم"
+[49.486s] TRACKER revised 1:7:8 'الضَّالِّينَ' -> '—' (3->1)
+```
+
+الضالين was recited correctly. The next chunk matched the opening of
+Al-Baqarah, gap-fill marked the word as skipped, and that erased the correct
+verdict. Rank 1 means *no evidence*; the quality tuple currently lets it beat
+rank 3.
+
+**1.3 A confirmed-correct word can be downgraded to wrong.**
+`revised 1:7:5 'الْمَغْضُوبِ' -> 'الْمَغْرُوبِ' (3->2)`. Same root cause as 1.2.
+
+**1.4 Ayahs skipped during re-discovery are never marked.** 1:6 was recited
+and never appeared: tracking died at 1:5, re-discovered at 1:7, and the ayah
+between was dropped. Gap-fill only runs inside `track()`, not across a
+discovery.
+
+**1.5 A pause between ayahs kills tracking.** Pausing between ayahs is correct
+recitation. During the pause the model emits breath fragments (`ِيَاكَ`,
+`يَّاكَنَا`, `مِنْ دِينٍ`) that fail to match; three in a row at 300ms apart is
+under a second, far shorter than a normal breath.
+
+### Work
+
+- Move the pointer update before every `continue` — it records where the
+  reciter *is*, not what has been scored
+- Absence of evidence never overrides evidence; make "ok" sticky
+- Gap-fill across a re-discovery within the same surah
+- Do not count a miss for a chunk that looks like silence or a fragment;
+  consider making `TRACKING_MAX_MISSES` time-based rather than count-based
+- **Add long, pausing, real-session cases to the benchmark** — without these
+  the gate cannot see any of the above
+
+### Gate
+
+```bash
+python -m pytest tests/ -q
+python scripts/benchmark_recordings.py
+./run.sh                       # recite Al-Fatiha, then read logs/
+```
+
+| Measure | Now | Target |
+|---|---|---|
+| Al-Fatiha ayahs shown | 3 / 7 | **7 / 7** |
+| Words given a verdict | 16 / 29 | **≥ 27 / 29** |
+| Tracking losses in one session | 3 | **0** |
+| Benchmark false alarms | 4.6% | **≤ 4.6%** |
+| Mistakes caught | 2/2 | **2/2** |
+
+### What the result changes
+
+- **If ayahs are all shown but first highlight is still slow** → Tier 2 is
+  confirmed necessary and should be done in full.
+- **If tracking still dies on pauses** → promote 1.5 to its own tier and treat
+  the VAD/windowing as the problem rather than the matcher.
+- **If the benchmark still says ~4.6% while the live session is visibly bad**
+  → the benchmark is the problem. **Do Tier 3 before Tier 2.** Everything
+  after depends on being able to measure what actually happens.
+
+---
+
+# Tier 2 — Lock on immediately
+
+*Only start when Tier 1's gate passes. If Tier 1 showed the benchmark cannot
+see real sessions, do Tier 3 first.*
+
+### Why
+
+Every opening phrase of Al-Fatiha is ambiguous, so the uniqueness gate
+correctly refuses all of them:
+
+| Phrase | Occurrences |
+|---|---|
+| `بسم الله الرحمن الرحيم` | 114 |
+| `الرحمن الرحيم` | ~115 |
+| `الحمد لله رب العالمين` | 4 |
+
+The app is *correct* and *useless* — it waits for `مالك يوم الدين`, 18.6s into
+the most-recited surah in the Quran, with a blank page. The fix is not better
+matching, it is context. Tilawa reached the same conclusion independently:
+their remaining errors need "the tracker's `hint` (previous ayah / surah
+continuity), not more model training" (`lab/EXPERIMENTS.md`, finding 17).
+
+### Work — in this order, measuring after each
+
+1. **Prefer the page already on screen.** Among ambiguous candidates, pick the
+   one on the displayed page. The app opens on page 1, so Al-Fatiha locks on
+   the first phrase. Nearly free, and it makes "open the page, then recite"
+   behave the way a person expects.
+2. **Prefer a surah opening.** `الحمد لله رب العالمين` occurs 4 times; only one
+   starts a surah. People start at surah starts.
+3. **Tap a word on the Mushaf to start there.** `set_position()` is already
+   written and tested in `recitation.py` and has never had a caller.
+
+### Gate
+
+```bash
+./run.sh     # recite Al-Fatiha from page 1
+./run.sh     # recite something in the middle of Al-Baqarah, page not open
+python scripts/benchmark_recordings.py
+```
+
+| Measure | Now | Target |
+|---|---|---|
+| First word → first highlight (Al-Fatiha) | 18.6s | **< 3s** |
+| Discovery hit rate | 4 / 47 | **> 1 in 5** |
+| Wrong lock-ons (locked to the wrong ayah) | — | **0** |
+| Benchmark false alarms / caught | 4.6% / 2-2 | **no worse** |
+
+The mid-Baqarah run matters: it checks the page prior *helps* when right
+without *hurting* when the reciter is somewhere else entirely.
+
+### What the result changes
+
+- **If step 1 alone hits the target** → skip step 2. Fewer priors is better;
+  each one is a chance to lock onto the wrong place.
+- **If step 1 causes wrong lock-ons** → it is too strong. Make it a tiebreak
+  among otherwise-equal candidates rather than an override.
+- **If discovery is still slow even with priors** → the bottleneck is the
+  uniqueness gate itself, and Tier 5's architecture change moves up.
+
+---
+
+# Tier 3 — Make every session produce test data
+
+*This may need to come before Tier 2 — Tier 1's gate decides.*
+
+### Why
+
+The benchmark has 11 recordings because they were recorded by hand. Every real
+session is a missed opportunity: **all of Tier 1's bugs were visible in the log
+but cannot be replayed**, so no test can be written for any of them. That is
+why they shipped.
+
+### Work
+
+`./run.sh --record`:
+
+```
+logs/session-20260919-122520/
+  session.log
+  full.flac                       the whole session
+  001_1-4_مالك-يوم-الدين.flac      one file per ayah the tracker identified
+  002_1-5_اياك-نعبد.flac
+  manifest.json                   ayah, time range, verdicts, confidence
+```
+
+- Split on the tracker's **own** ayah transitions, so each clip is labelled
+  with the ayah the app *believed* it was in. Where that belief was wrong the
+  clip is more valuable, not less — it is the failing case, already isolated.
+- `manifest.json` records what the app decided, so a clip can be replayed and
+  compared against the same decision later.
+- `benchmark_recordings.py --from-session <dir>` turns a captured session
+  straight into benchmark cases.
+
+### Gate
+
+```bash
+./run.sh --record                                  # recite Al-Fatiha
+python scripts/benchmark_recordings.py --from-session logs/session-*/
+```
+
+| Measure | Target |
+|---|---|
+| Clips produced | one per ayah recited |
+| Clip labels | match what was actually recited |
+| Replay reproduces the live verdicts | yes |
+| Benchmark corpus size | 11 → **30+** within a week of normal use |
+
+### What the result changes
+
+**This tier re-plans Tier 4 entirely.** The failures in the enlarged corpus
+decide which Tilawa idea is worth implementing. Do not pick from Tier 4 before
+seeing them — the current pick order is a guess based on 6 remaining errors,
+which is too small a sample to plan from.
+
+---
+
+# Tier 4 — Accuracy, from Tilawa
+
+*`/home/hashus/code/tilawa`, cloned and inspected. Each item is independently
+measurable — implement and gate them **one at a time**, in whatever order
+Tier 3's corpus says matters.*
+
+### Why
+
+Our remaining false alarms fall into two families, and Tilawa has a
+better-designed answer to both.
+
+**4.1 `heardRatio`** — heard length ÷ expected length. A direct measure of
+truncation, replacing our positional window-edge heuristic, which is a proxy
+for the same thing and a worse one. Expected to remove the fragment errors:
+`يُهَا`/`يَاأَيُّهَا`, `تَعْرَفُوا`/`لِتَعَارَفُوا`, `الذَّكَرِ`/`لِلذَّكَرِ`.
+
+**4.2 Phoneme confusion costs** (`packages/core/src/recitation/phonemeCost.ts`).
+Weighted edit distance where acoustically similar letters cost less, with
+explicit groups `ذدضتط`, `ظزذصسث`, `قكغ`, `فبم` and pairs `ه/ح`, `ء/ع`, `ن/م`.
+Several of our residual errors sit exactly in those groups —
+`كَالُوحٌ`/`كَالُوهُمْ` is their `ه/ح`; `أَظِيمٍ`/`عَظِيمٍ` is their `ء/ع`.
+**Risk:** this makes the matcher more forgiving, so it is the item most likely
+to cost mistake detection. Gate it hard.
+
+**4.3 Only flag a word sitting between two confidently-correct words**
+(`correction.ts`). A stronger, better-principled version of our edge rule:
+never condemn a word in a region you do not trust.
+
+**4.4 Full pausal (waqf) modelling** (`verdicts.ts`, `pausalPhonemes`).
+Ours drops the final vowel; theirs computes the actual pausal pronunciation
+including tanween → long alef (`لَغْوًا` → `لَغْوَا`).
+
+**4.5 Never grade tajweed, only word errors.** Worth adopting as a stated
+principle so the app does not drift into judging pronunciation quality.
+
+### Gate — after each item separately
+
+```bash
+python -m pytest tests/ -q
+python scripts/benchmark_recordings.py
+```
+
+| Measure | Rule |
+|---|---|
+| False alarms | must drop |
+| Mistakes caught | **must stay at 2/2** — no exceptions |
+| Unit tests | all pass |
+
+Keep the change only if both hold. Revert otherwise and write down why — a
+rejected idea with a recorded reason is worth more than an unmeasured one.
+
+### What the result changes
+
+- **If 4.1 alone gets false alarms near zero** → stop. Do not add 4.2; a more
+  forgiving matcher that is not needed is pure risk to mistake detection.
+- **If false alarms stay above ~3% after all of 4.1–4.4** → the matcher is no
+  longer the bottleneck. Go to Tier 5.
+- **If mistake detection drops on any item** → that item is wrong for this app
+  regardless of the false alarm number.
+
+---
+
+# Tier 5 — Architecture
+
+*Only if Tier 4 plateaus. Largest win, largest change, and it invalidates
+several tiers above it — so it goes last, not first.*
+
+### Why
+
+Tilawa benchmarked this exhaustively and concluded **ASR quality is the
+bottleneck and all Whisper-style approaches fail on the same samples**
+(`lab/EXPERIMENTS.md`, findings 1–3). Their answer was to stop using Whisper.
+
+Our own data already points the same way: `whisper-small-quran` measured
+*worse* than our base model (23.4% vs 4.6% false alarms) because generative
+decoding degrades on 3-second windows. The problem is the architecture, not
+the size.
+
+| Model | Size | Why it differs |
+|---|---|---|
+| `nvidia/stt_ar_fastconformer_hybrid_large_pcd_v1.0` (Tilawa's ONNX) | 88 MB | **CTC, not generative** — structurally cannot hallucinate `تَعْمَى` out of silence. MIT / CC-BY-4.0. |
+| `Quran-Lab/zipformer_p-arabic-v3` | 66 MB | Streaming phoneme CTC, 100% recall on Tilawa's corpus. **NPL-1.2 — non-commercial only.** |
+| `quran-dev/wav2vec2-ctc-quran-phoneme-…` | large | Phoneme CTC tuned for **mispronunciation detection** — our exact task |
+
+A streaming CTC model would remove, rather than mitigate, three things this
+codebase currently works around: silence hallucination, window-boundary word
+fragments, and the whole overlapping-window evidence mechanism.
+
+### Work
+
+Bake-off first, port second. Add a second engine behind the existing
+`transcribe_window()` seam and measure it on the same corpus before changing
+anything else.
+
+### Gate
+
+```bash
+python scripts/benchmark_recordings.py --model <candidate>
+```
+
+Must beat the current model on false alarms **and** keep 2/2, on a corpus of
+at least 30 recordings from Tier 3.
+
+### What the result changes
+
+If a CTC engine wins clearly, Tier 4's matcher work is partly obsolete — the
+edge/fragment machinery exists to paper over Whisper's behaviour on short
+windows. Check which parts can then be deleted rather than kept.
+
+---
+
+# Recordings still wanted
+
+The benchmark can only catch what is in it. The `لا` bug in 78:35 was found by
+reciting, not by testing. **Tier 3 makes most of this automatic** — until then,
+by hand.
+
+**Orthography** — where hand-written rules can be silently wrong:
+- 78:35–36 `لَّا يَسْمَعُونَ فِيهَا لَغْوًا وَلَا كِذَّابًا` (the shadda bug)
+- heavy shadda: 112:1–4
+- tanween with a stop, and the same word continued: `لَغْوًا`, `عَظِيمًا`
+- alef maddah / dagger alef: `ءَامَنُوا`, `ذَٰلِكَ`, `الرَّحْمَٰنِ`
+
+**Deliberate mistakes**, one per kind (we have 2, want ~8): similar-sounding
+letter (`ذ`→`د`, `ح`→`ه`); wrong vowel only (`كَتَبَ`/`كُتِبَ`); skipped word;
+skipped ayah; repeated word; stop mid-word and restart; jump to a similar ayah
+elsewhere (one `كَلَّا` ayah to another).
+
+**Real conditions** — all 11 current recordings start cleanly and run forward:
+- long pauses (5–10s) mid-ayah, then resuming
+- coughing, throat-clearing, background noise
+- very slow with stretched madd; and very fast
+- starting mid-ayah in a *long* surah (Al-Baqarah)
+- last ayah of a surah straight into the next surah
+
+**Other voices.** Everything is tuned on one reciter.
+
+Name files `surah X ayahs A-B <what happens>.flac`, drop in `tests/records/`,
+then add the expectation to `EXPECTATIONS` in
+`scripts/benchmark_recordings.py`.

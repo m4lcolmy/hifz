@@ -106,6 +106,16 @@ def load_pcm16(path: Path, target_sr: int = SAMPLE_RATE) -> bytes:
 # Collectors
 # ═══════════════════════════════════════════════════════════════════════
 
+class VirtualClock:
+    """The simulated session clock, handed to the tracker."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
 class ScoreBoard:
     """Stands in for the Mushaf view and keeps the FINAL status per word.
 
@@ -176,7 +186,10 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
     res.audio_s = len(pcm) / 2 / SAMPLE_RATE
 
     board = ScoreBoard()
-    tracker = RecitationTracker(board, page_map)
+    # The tracker's timing rules must see the simulated clock, not wall time,
+    # or the benchmark stops reproducing the live app.
+    virtual = VirtualClock()
+    tracker = RecitationTracker(board, page_map, index, clock=virtual)
     buffer = SlidingWindowBuffer()
 
     # Feed the buffer in 100 ms increments like the mic callback does, and
@@ -197,6 +210,7 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
     # the newest one. This reproduces the app's real drop rate.
     t0 = time.monotonic()
     clock = 0.0
+    virtual.now = 0.0
     i = 0
     while i < len(pending):
         arrive, window = pending[i]
@@ -213,6 +227,7 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
         res.chunks += 1
         res.asr_ms.append(asr_ms)
         clock += asr_ms / 1000.0
+        virtual.now = clock
 
         if not text:
             res.empty += 1

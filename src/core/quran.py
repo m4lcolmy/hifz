@@ -259,6 +259,30 @@ class QuranIndex:
 
         return self._build_match(best_start, trans_words, gap_start=gap_start)
 
+    def words_between(self, start: tuple[int, int, int], end: tuple[int, int, int],
+                      limit: int = 40) -> list[tuple[int, int, int, str]]:
+        """Reference words strictly between two positions, in order.
+
+        Used to fill in an ayah the reciter said while the tracker had lost
+        them: discovery lands ahead of where tracking died, and everything
+        between was recited but never scored.
+
+        Returns [] if either end is unknown, if they run backwards, or if the
+        gap is implausibly large (a real jump, not a dropped ayah).
+        """
+        start_pos = self._pos_map.get(start)
+        end_pos = self._pos_map.get(end)
+        if start_pos is None or end_pos is None:
+            return []
+        if not 0 < end_pos - start_pos - 1 <= limit:
+            return []
+
+        out = []
+        for i in range(start_pos + 1, end_pos):
+            _, word, s_id, a_id, w_idx = self._flat[i]
+            out.append((s_id, a_id, w_idx, word))
+        return out
+
     def _find_context_pos(self, surah: int, ayah: int, word_index: int) -> int | None:
         """Find the flat index for a given surah/ayah/word position.
 
