@@ -132,3 +132,19 @@ DISCOVERY_SOLO_AYAH = True
 # matching a reference word this far back is treated as an echo and reported
 # as not heard rather than as the word it lined up against.
 ECHO_LOOKBACK = 25
+
+# ── Speech engine ─────────────────────────────────────────────────────
+# Whisper is the default and the tuned one. A second engine is something you
+# select and measure against the same corpus, never a silent swap:
+#
+#     python scripts/benchmark_recordings.py --engine ctc
+#
+# Tier E established why a second engine is the remaining avenue: the app's
+# false alarms are acoustically identical to its real errors, so no comparison
+# of strings can separate them. What is left is to mishear less often.
+ASR_ENGINE = "whisper"                      # "whisper" | "ctc"
+CTC_MODEL_DIR = PROJECT_ROOT / "models" / "ctc"
+# Mean probability of the chosen symbols over non-blank frames. CTC's blank is
+# a real "nothing here", so this is not produced by the same mechanism that
+# does the hallucinating — unlike Whisper's avg_logprob.
+CTC_MIN_CONFIDENCE = 0.35

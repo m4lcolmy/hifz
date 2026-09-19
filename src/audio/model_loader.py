@@ -1,34 +1,32 @@
-"""Background thread for loading the Whisper model and processor."""
+"""Background thread for loading the speech engine."""
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.config import MODEL_DIR, DEVICE, USE_FP16
+from src.config import ASR_ENGINE
 from src.core.debug import log
-from src.core.device import resolve_device
 
 
 class ModelLoaderThread(QThread):
-    """Load the Whisper model on a background thread so the UI stays responsive."""
+    """Load the engine on a background thread so the UI stays responsive.
 
-    finished = pyqtSignal(object, object)  # (processor, model)
+    Which engine is a setting, not a rebuild — see src/audio/engines.py. The
+    thread carries the name so the UI can switch engines by starting a new
+    loader rather than restarting the app.
+    """
+
+    finished = pyqtSignal(object, object)   # (unused, engine)
     error = pyqtSignal(str)
+
+    def __init__(self, engine_name: str | None = None, parent=None):
+        super().__init__(parent)
+        self.engine_name = engine_name or ASR_ENGINE
 
     def run(self):
         try:
-            from faster_whisper import WhisperModel
+            from src.audio.engines import load_engine
 
-            device, compute_type = resolve_device(DEVICE, USE_FP16)
-            log.event("MODEL", f"loading on {device}/{compute_type}")
-
-            model = WhisperModel(
-                MODEL_DIR,
-                device=device,
-                compute_type=compute_type,
-                local_files_only=True,
-            )
-
-            # In faster_whisper, the model object handles both processing and generation
-            # We'll pass it as both for compatibility or adjust the transcriber
-            self.finished.emit(None, model)
+            engine = load_engine(self.engine_name)
+            log.event("MODEL", f"{engine.label} engine ready")
+            self.finished.emit(None, engine)
         except Exception as e:
             self.error.emit(str(e))

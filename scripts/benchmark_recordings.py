@@ -333,7 +333,7 @@ def transcribe(model, window: bytes) -> tuple[str, float]:
 # Reporting
 # ═══════════════════════════════════════════════════════════════════════
 
-def report(results: list[Result]):
+def report(results: list[Result], engine_label: str = ""):
     print()
     print("=" * 96)
     print("  RESULTS")
@@ -385,6 +385,8 @@ def report(results: list[Result]):
     wall = sum(r.wall_s for r in results)
 
     print()
+    if engine_label:
+        print(f"  engine                  {engine_label}")
     print(f"  position found          {found}/{len(results)} recordings")
     print(f"  words scored            {total_scored}  (ok={total_ok} wrong={total_wrong} "
           f"missed={total_missed})")
@@ -475,6 +477,12 @@ def main():
     ap.add_argument("--debug-log", help="write a full session log to this path")
     ap.add_argument("--model", default=MODEL_DIR, help="model directory to benchmark")
     ap.add_argument(
+        "--engine", default=None, metavar="NAME",
+        help="speech engine to benchmark (default: the configured one). "
+             "This is how a bake-off is run: same corpus, same matching, "
+             "same scoring, one engine swapped.",
+    )
+    ap.add_argument(
         "--from-session", type=Path, metavar="DIR",
         help="score a ./run.sh --record directory instead of tests/records/",
     )
@@ -492,15 +500,19 @@ def main():
     index = QuranIndex()
     page_map = PageMap()
 
-    device, compute_type = resolve_device(DEVICE, USE_FP16)
-    print(f"Loading Whisper from {args.model} on {device}/{compute_type} …")
-    from faster_whisper import WhisperModel
-    model = WhisperModel(
-        args.model,
-        device=device,
-        compute_type=compute_type,
-        local_files_only=True,
-    )
+    from src.audio.engines import EngineUnavailable, WhisperEngine, load_engine
+
+    try:
+        if args.engine in (None, WhisperEngine.name):
+            # --model only means anything for Whisper; keep honouring it so a
+            # Whisper-vs-Whisper comparison still works the way it always did.
+            model = WhisperEngine(args.model).load()
+        else:
+            model = load_engine(args.engine)
+    except EngineUnavailable as e:
+        print(f"\n  {e}\n")
+        return 1
+    print(f"Engine: {model.label} — {model.description}")
 
     if args.from_session is not None:
         cases = cases_from_session(args.from_session)
@@ -530,7 +542,7 @@ def main():
         results.append(run_recording(model, index, page_map, path, exp, args.verbose))
 
     if results:
-        report(results)
+        report(results, model.label)
     return 0
 
 

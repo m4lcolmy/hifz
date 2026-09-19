@@ -24,54 +24,22 @@ from src.core.matching import match_for_mode
 
 
 def transcribe_window(model, audio) -> str:
-    """Transcribe one audio window, dropping anything the model is unsure of.
+    """Transcribe one audio window. `model` is an Engine, or a bare model.
 
-    Whisper hallucinates confidently on silence, so three gates are applied:
-    Silero VAD removes the silence before the model sees it, and any segment
-    that still comes back as probable-silence, low-confidence or degenerately
-    repetitive is discarded rather than fed to the matcher.
+    The engine seam lives in src/audio/engines.py. This function stays because
+    it is the boundary every caller already uses — the app, the benchmark and
+    the offline harnesses — and a bare faster-whisper model is still accepted
+    so nothing that predates the seam has to change at once.
     """
-    segments, _info = model.transcribe(
-        audio,
-        beam_size=ASR_BEAM_SIZE,
-        language="ar",
-        task="transcribe",
-        initial_prompt="Quran recitation, classical Arabic, Uthmani script",
-        vad_filter=ASR_VAD_FILTER,
-        no_speech_threshold=ASR_NO_SPEECH_THRESHOLD,
-        log_prob_threshold=ASR_MIN_AVG_LOGPROB,
-        compression_ratio_threshold=ASR_MAX_COMPRESSION_RATIO,
-        # Each window is independent; conditioning on the previous one makes
-        # the model repeat itself across overlapping windows.
-        condition_on_previous_text=False,
-    )
+    from src.audio.engines import Engine, WhisperEngine
 
-    kept = []
-    for seg in segments:
-        if _rejected(seg):
-            continue
-        kept.append(seg.text)
-    return " ".join(kept).strip()
+    if isinstance(model, Engine):
+        return model.transcribe(audio)
 
-
-def _rejected(seg) -> str | None:
-    """Return a reason to drop this segment, or None to keep it."""
-    no_speech = getattr(seg, "no_speech_prob", 0.0)
-    avg_logprob = getattr(seg, "avg_logprob", 0.0)
-    compression = getattr(seg, "compression_ratio", 0.0)
-
-    if no_speech > ASR_NO_SPEECH_THRESHOLD:
-        reason = f"silence (no_speech={no_speech:.2f})"
-    elif avg_logprob < ASR_MIN_AVG_LOGPROB:
-        reason = f"low confidence (avg_logprob={avg_logprob:.2f})"
-    elif compression > ASR_MAX_COMPRESSION_RATIO:
-        reason = f"degenerate (compression={compression:.2f})"
-    else:
-        return None
-
-    log.count("asr_rejected")
-    log.event("ASR", f'rejected "{seg.text.strip()}" — {reason}')
-    return reason
+    # A bare WhisperModel: wrap it in the engine that knows how to drive it.
+    engine = WhisperEngine.__new__(WhisperEngine)
+    engine.model = model
+    return engine.transcribe(audio)
 
 
 class TranscriberWorker(QObject):
