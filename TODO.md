@@ -78,7 +78,69 @@ reaches those. That is Tier F.
 
 ---
 
-# Tier F — A second engine ✅ SEAM DONE, bake-off pending
+# Tier F — A second engine ✅ SEAM DONE · bake-off RUN · CTC not adopted
+
+### Bake-off result
+
+`rabah2026/wav2vec2-large-xlsr-53-arabic-quran-v_final`, same corpus, same
+matching, same scoring, one engine swapped:
+
+| | Whisper | CTC | |
+|---|---|---|---|
+| **Coverage** | 99.4% | **100.0%** | CTC better |
+| **False alarms** | **0.6%** (1/157) | 4.4% (7/160) | **CTC 7× worse** |
+| **Mistakes caught** | 2/2 | 2/2 | equal |
+| Latency per window | 104 ms | **42 ms** | CTC 2.5× faster |
+
+**The gate says both, not one. CTC fails it, so Whisper stays the default.**
+`./run.sh --engine ctc` runs it; nothing about the default changed.
+
+### What CTC gets wrong, and why it is interesting
+
+Every one of its seven false alarms is a single-letter confusion, and they
+fall into two classes:
+
+| heard | reference | |
+|---|---|---|
+| `سَبَاءٌ` | `سَوَاءٌ` | ب/و |
+| `بَيْلٌ` | `وَيْلٌ` | ب/و |
+| `فَمَا` | `وَمَا` | ف/و |
+| `أَظِيمٍ` | `عَظِيمٍ` | ء/ع |
+| `الْكَثَرَ` | `الْكَوْثَرَ` | dropped و |
+
+These are **exactly Tilawa's phoneme-neighbour groups** — `فبم` and the pair
+`ء/ع`. Tier E refuted phoneme costs against *Whisper*, whose errors are
+scattered; against CTC the errors are systematic and in precisely the classes
+that cost model was built for. **The refutation was model-specific, and this
+reopens E.2 for this engine.**
+
+**But not yet, and the reason is the same trap.** The deliberate mistake
+`فَلَهُمْ`/`وَلَهُمْ` is a ف/و confusion — the same class as the false alarms
+`فَمَا`/`وَمَا` and `بَيْلٌ`/`وَيْلٌ`. Forgiving the class forgives the mistake.
+
+### A defect found by running it
+
+`CTC_MIN_CONFIDENCE` is **inert**. Sweeping 0.35 → 0.50 → 0.65 → 0.80 gives
+byte-identical results, so the mean argmax probability over non-blank frames
+is always above 0.80 and the gate never fires. The measure needs replacing —
+likely entropy, or the margin between the top two symbols — before it is worth
+tuning. As written it is a knob connected to nothing.
+
+### What to do next with this
+
+1. **Replace the confidence measure**, then re-sweep. A gate that never fires
+   cannot be said to have been tested.
+2. **Try CTC as a second opinion rather than a replacement.** It has *better*
+   coverage and is 2.5× faster; a word painted red only where both engines
+   agree would combine Whisper's precision with CTC's reach. Measure it as its
+   own change.
+3. **Do not adopt phoneme costs for CTC** until there is a deliberate mistake
+   in the corpus that is *not* a ف/و confusion, or the gate cannot tell you
+   anything.
+
+### Seam
+
+
 
 **The seam is in and Whisper is untouched.** Which engine runs is a setting,
 not a rebuild, and nothing downstream learns which one produced the text.
