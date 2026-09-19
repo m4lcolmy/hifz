@@ -448,6 +448,51 @@ before. Treat a disagreement as the thing to look at, not as a broken manifest.
 
 ---
 
+# Tier 3.6 — Echoed words and Whisper's vowels ✅ DONE
+
+Two false-alarm sources found in `logs/hifz-20260919-135032.log` (23:1–12) and
+`logs/hifz-20260919-135237.log` (41:2–5), both recited correctly.
+
+**3.6.1 The model echoes text it has already heard.** 23:7 ends الْعَادُونَ and
+the next window came back `...الْعَادُونَ فَمَنِ ابْتَغَى` — 23:7's *own opening*
+again. Paired off positionally that became "وَالَّذِينَ recited as فَمَنِ" and
+"هُمْ recited as ابْتَغَى": two words of 23:8 red, the pointer dragged to
+23:8:1, and the ayah's other three never scored. A recited word matching a
+reference word within `ECHO_LOOKBACK` is now reported as *not heard* rather
+than as the word it lined up against, so the pointer stays put.
+Al-Mu'minun went from stopping at 23:8 with 40 words to reaching 23:12 with 56.
+
+**3.6.2 Diacritics were graded, and they are the model's guess.** بَشِيرًا came
+back بِشِيرًا from **eight windows out of eight** — letters right every time,
+vowel wrong every time. Whisper emits text whose tashkeel is largely produced
+by its language model rather than heard. Short vowels are now ignored in the
+correctness test; tanween stays, being a letter's worth of sound. This also
+settles waqf for free. It is Tilawa's 4.5 principle — never grade tajweed,
+only word errors — arrived at from our own data.
+
+**Cost:** a wrong-vowel-only mistake (`كَتَبَ`/`كُتِبَ`) can no longer be
+detected. There is no such case in the corpus, so the cost is unmeasured —
+record one before assuming it is acceptable.
+
+Also fixed: the pre-lock buffer was trimmed only on append, so a stale phrase
+survived if the reciter fell silent and the next thing to arrive was the lock.
+
+Gate: 85.1% coverage, 0.6% false alarms, 2/2 caught, 56 tests, 63/63 search —
+all unchanged. Live: Fussilat 3 red → **2**, Al-Mu'minun 3 red over 40 words →
+5 over 56.
+
+### Still open from these logs
+
+- `41:1 حم` never shown — Whisper transcribed it `خَامٍ`, never cleanly. An ASR
+  limit, not a matcher bug. Tier 5.
+- **The basmala is not shown for any surah but Al-Fatiha**, because it is only
+  a numbered ayah at 1:1 — there is no reference text to paint. Reciters say it
+  before every surah, so the app looks dead for the first three seconds of most
+  sessions. Needs basmala carried as a non-ayah line in the data, then matched
+  without being scored against an ayah.
+
+---
+
 # Tier 3.5 — Coverage, and how sure "wrong" is
 
 *Proposed by Tier 3's numbers and by `logs/hifz-20260919-131925.log`. Not

@@ -19,6 +19,7 @@ from src.config import (
     TRACKING_WINDOW, TRACKING_MAX_GAP, TRACKING_MIN_MATCHES,
     TRACKING_WEAK_EVIDENCE, TRACKING_WEAK_MAX_DRIFT,
     DISCOVERY_SOLO_AYAH, PRELOCK_LOOKBACK_WORDS, PRELOCK_MIN_MATCHES,
+    ECHO_LOOKBACK,
 )
 
 
@@ -419,8 +420,14 @@ class QuranIndex:
         if not ref_data:
             return None
 
-        # Word-by-word comparison
-        words = self._compare_words(trans_words, ref_data)
+        # The reference words just before this match. The model echoes words
+        # it has already heard at a window tail, and the echo is usually of
+        # text that sits *before* where the window aligned — so the window's
+        # own reference is not enough to recognise one.
+        preceding = [
+            self._flat[i][0] for i in range(max(0, flat_pos - ECHO_LOOKBACK), flat_pos)
+        ]
+        words = self._compare_words(trans_words, ref_data, preceding)
 
         # Prepend skipped reference words, oldest first
         if gap_start is not None and gap_start < flat_pos:
@@ -459,7 +466,8 @@ class QuranIndex:
         return self.discover(transcription)
 
     def _compare_words(
-        self, trans_words: list[str], ref_data: list[tuple[str, int, int, int]]
+        self, trans_words: list[str], ref_data: list[tuple[str, int, int, int]],
+        preceding: list[str] | None = None,
     ) -> list[WordResult]:
         """Word-by-word comparison using diacritics.
 
@@ -490,10 +498,25 @@ class QuranIndex:
                         reference_index=ref_data[j][3],
                     ))
             elif op == "replace":
-                # Pair up replaced words
+                # Words already heard earlier in this same window. The model
+                # echoes them at a window tail — 23:7 ends الْعَادُونَ and the
+                # next window came back "...الْعَادُونَ فَمَنِ ابْتَغَى", which is
+                # 23:7's *own opening* repeated. Paired off positionally that
+                # echo became "وَالَّذِينَ recited as فَمَنِ" and "هُمْ recited as
+                # ابْتَغَى": two words of 23:8 painted red, the pointer dragged
+                # to 23:8:1, and the ayah's remaining three words never scored.
+                # A word we have already heard is not evidence about the word
+                # it happens to line up against.
+                echoed = set(ref_norm[:j1]) | set(preceding or ())
+
                 for k in range(max(i2 - i1, j2 - j1)):
                     ti = i1 + k if i1 + k < i2 else None
                     tj = j1 + k if j1 + k < j2 else None
+                    if (ti is not None and tj is not None
+                            and trans_norm[ti] in echoed):
+                        # Report the reference word as not heard rather than
+                        # as recited wrongly: amber, and the pointer stays put.
+                        ti = None
                     results.append(WordResult(
                         recited=trans_words[ti] if ti is not None else "",
                         reference=ref_words[tj] if tj is not None else "",
@@ -591,10 +614,19 @@ class QuranIndex:
         # Long alef after a fathah is the same sound as the fathah alone
         t = re.sub("\u064E\u0627", "\u064E", t)
 
-        # ── 4. The ending depends on where the reciter stopped ───────────
-        # Stopping on a word (waqf) drops its case ending; continuing (wasl)
-        # pronounces it. Both are correct, and which one is heard depends on
-        # where the audio window cut. Tanween stays: it is part of the word.
-        t = re.sub("[\u064E\u064F\u0650]+$", "", t)
+        # ── 4. Short vowels are the model's guess, not a measurement ─────
+        # Whisper emits text; the tashkeel on it is largely produced by its
+        # language model rather than heard, and it is not stable — بَشِيرًا came
+        # back as بِشِيرًا from eight windows out of eight, the letters right
+        # every time. Painting a word red over a vowel mark is grading the
+        # model's spelling, not the recitation.
+        #
+        # This also settles waqf for free: stopping on a word drops its case
+        # ending and continuing pronounces it, both correct, and which one is
+        # heard depends only on where the audio window cut.
+        #
+        # Tanween stays — it is a letter's worth of sound, not a vowel mark,
+        # and dropping it would hide a real ending error.
+        t = re.sub("[\u064E\u064F\u0650]", "", t)
 
         return t

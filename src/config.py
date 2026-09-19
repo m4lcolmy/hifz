@@ -123,3 +123,12 @@ PRELOCK_MIN_MATCHES = 2
 # over. Where that one word occurs exactly once in the whole Quran it is the
 # least ambiguous phrase there is, so one word is enough.
 DISCOVERY_SOLO_AYAH = True
+
+# ── Echoed words ──────────────────────────────────────────────────────
+# At a window tail the model repeats text it has already heard: 23:7 ends
+# الْعَادُونَ and the next window came back "...الْعَادُونَ فَمَنِ ابْتَغَى" —
+# 23:7's own opening again. Paired off positionally that echo condemned two
+# words of 23:8 and dragged the pointer past the other three. A recited word
+# matching a reference word this far back is treated as an echo and reported
+# as not heard rather than as the word it lined up against.
+ECHO_LOOKBACK = 25

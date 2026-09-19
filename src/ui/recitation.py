@@ -319,7 +319,12 @@ class RecitationTracker:
              if w.surah_id is not None and w.reference_index is not None),
             None,
         )
-        pending, self._pending = self._pending, []
+        # Trimming on append alone is not enough: if the reciter falls silent
+        # and the next thing to arrive is the lock itself, nothing ever
+        # appended and a minutes-old phrase would be placed against it.
+        cutoff = self._clock() - PRELOCK_BUFFER_SECONDS
+        pending = [p for p in self._pending if p[0] >= cutoff]
+        self._pending = []
         if first is None:
             return
 
