@@ -1,0 +1,36 @@
+# Hifz — Quran Recitation Trainer
+#
+#   pip install -r requirements.txt
+#
+# Python 3.12. Versions are the ones this has been tested against; they are
+# pinned loosely (>=) so patch updates are fine.
+
+# ── Interface ──────────────────────────────────────────────────────────
+PyQt6>=6.11.0                 # window, Mushaf rendering, microphone capture
+
+# ── Speech recognition ─────────────────────────────────────────────────
+faster-whisper>=1.2.1         # Whisper inference
+ctranslate2>=4.7.1            # the engine faster-whisper runs on
+tokenizers>=0.22.2
+onnxruntime>=1.25.0           # Silero VAD, used to drop silence before Whisper
+
+# ── Audio ──────────────────────────────────────────────────────────────
+numpy>=1.26.0,<2              # ctranslate2 expects the numpy 1.x ABI
+webrtcvad>=2.0.10             # voice activity detection on the live mic
+av>=17.0.1                    # decodes the test recordings (benchmark only)
+
+# ── Tests ──────────────────────────────────────────────────────────────
+pytest>=9.0.0
+
+# ── GPU (optional, ~1.4 GB) ────────────────────────────────────────────
+# Install these to run on an NVIDIA GPU. Inference drops from ~600 ms per
+# window to ~100 ms, which is the difference between feedback appearing
+# two-thirds of a second late and appearing immediately.
+#
+#   pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+#
+# No further setup: src/core/device.py finds and loads them itself, and
+# falls back to CPU when they are absent.
+#
+# nvidia-cublas-cu12>=12.9.2
+# nvidia-cudnn-cu12>=9.26.0
