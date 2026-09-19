@@ -250,90 +250,289 @@ Only the second is left.
 
 ---
 
-# Tier F — Architecture
+# Tier F — A second engine ✅ SEAM DONE, bake-off pending
 
-*Only if B, C and D plateau. Largest win, largest change, invalidates several
-tiers above it.*
+**The seam is in and Whisper is untouched.** Which engine runs is a setting,
+not a rebuild, and nothing downstream learns which one produced the text.
 
-### Why
+```bash
+python scripts/fetch_ctc_model.py                      # candidates + licences
+python scripts/fetch_ctc_model.py --model wav2vec2-arabic --agree
+python scripts/benchmark_recordings.py --engine ctc    # the bake-off
+```
 
-Tilawa benchmarked this exhaustively and concluded **ASR quality is the
-bottleneck and all Whisper-style approaches fail on the same samples**
-(`lab/EXPERIMENTS.md`, findings 1–3).
+`src/audio/engines.py`. `WhisperEngine` is a *move, not a rewrite* — same
+three gates, same parameters — so a bake-off compares against the app as it
+really behaves. `CtcEngine` loads any transformers `AutoModelForCTC` and uses
+CTC's own blank symbol and mean symbol probability rather than Whisper's
+`avg_logprob`, which is produced by the same mechanism that does the
+hallucinating. `transcribe_window()` keeps its signature and still accepts a
+bare faster-whisper model, so every existing caller works unchanged.
+Whisper path verified byte-identical: **99.4% / 0.6% / 2-2**.
 
-Our own sessions now say the same thing independently. The reds that survive
-every matcher fix are words Whisper never heard right in any window:
+### Why a second engine is the only avenue left
+
+Tier E closed the rest. Our false alarms are *acoustically identical* to our
+real errors — `فَلَهُمْ`/`وَلَهُمْ` (deliberate mistake) and `خُوبًا`/`حُوبًا`
+(false alarm) are the same edit at the same distance, 0.25 — so no comparison
+of strings separates them. Tier 3.5 showed agreement across windows does not
+either: the windows agree on the *wrong* reading.
+
+Every red word left in every session is one Whisper never heard correctly in
+any window:
 
 | reference | heard | windows agreeing |
 |---|---|---|
 | `فُصِّلَتْ` | `فُصِّدَتْ` | 7 of 11 |
 | `حُوبًا` | `خُوبًا` | 7 of 19 |
 | `حم` (41:1) | `خَامٍ` | never transcribed cleanly |
-| `وَرَاءَ` | `ابْتَغَابَرَاءَ` | 6 windows, 5 different answers |
 
-`whisper-small-quran` measured *worse* than our base model (23.4% vs 4.6%
-false alarms) because generative decoding degrades on 3-second windows. The
-problem is the architecture, not the size.
+A CTC model emits one symbol per audio frame and has no decoder free to
+continue a plausible sentence — the mechanism behind invented words, confident
+window-edge fragments and echoed tails, all of which this codebase has code to
+work around. Tilawa reached the same conclusion and stopped using Whisper
+(`lab/EXPERIMENTS.md`, findings 1–3).
 
-| Model | Size | Why it differs |
+### The bake-off, when a model is on disk
+
+| Measure | Whisper today | A CTC engine must |
 |---|---|---|
-| `nvidia/stt_ar_fastconformer_hybrid_large_pcd_v1.0` | 88 MB | **CTC, not generative** — structurally cannot hallucinate. MIT / CC-BY-4.0. |
-| `Quran-Lab/zipformer_p-arabic-v3` | 66 MB | Streaming phoneme CTC, 100% recall on Tilawa's corpus. **NPL-1.2 — non-commercial only.** |
-| `quran-dev/wav2vec2-ctc-quran-phoneme-…` | large | Phoneme CTC tuned for **mispronunciation detection** — our exact task |
+| Coverage | 99.4% | **≥ 99.4%** |
+| False alarms | 0.6% | **< 0.6%** |
+| Deliberate mistakes | 2/2 | **2/2** |
+| Latency per window | ~100 ms | **< 300 ms** (the step is 300 ms) |
 
-A streaming CTC model would remove, rather than mitigate, three things this
-codebase works around: silence hallucination, window-boundary fragments, and
-the echoed-word problem Tier 3.6 had to patch.
+Both of the first two, not one. An engine that is quieter but blinder is worse.
+
+**Phoneme models need a mapping.** `zipformer` and `wav2vec2-quran` emit
+phonemes, not Arabic script, so they cannot be scored until phonemes map back
+to words. Try a character-level model first (`wav2vec2-arabic`) — it is the
+cheapest way to find out whether CTC helps *at all* before paying for the
+mapping.
+
+**Licences differ and one candidate is non-commercial only.** `fetch_ctc_model`
+prints each licence and refuses to download without `--agree`.
+
+### What the result changes
+
+- **If CTC wins clearly** → much of the compensating machinery can go:
+  `_is_fragment`, the echo rule, `EDGE_CONFIRMATIONS`, the withhold/commit
+  dance. Check what can be *deleted*, not kept alongside.
+- **If CTC loses on coverage but wins on false alarms** → it is a second
+  opinion, not a replacement. Consider running both and only painting red
+  where they agree — but measure that as its own change.
+- **If neither wins** → the ceiling is the audio, and the next move is better
+  windowing or a Quran-tuned fine-tune, not another off-the-shelf model.
+
+---
+
+# Tier G — Build the corpus from recitations, not from recording sessions
+
+*Planned, not started.*
+
+### Why
+
+The corpus is 11 hand-made recordings by one reciter. Everything is tuned on
+that one voice, and Tier D found that **two of the eleven were labelled with
+ayahs they do not contain** — the labels are typed by hand, so they are wrong
+at a rate nobody was measuring.
+
+Published recitations by established qāriʾ fix both at once. The recitation is
+correct by construction, and **the ground truth comes from the URL rather than
+from someone's memory**: if you fetch surah 2 ayah 1, that is what it is.
+
+They also fix the gaps the current corpus cannot reach, because a person
+recording test cases records what is easy to recite:
+
+| gap now | what fetching fixes |
+|---|---|
+| one voice | many reciters, different speeds and styles |
+| longest ayah is 17 words | Al-Baqarah 282 is 129 words |
+| no muqatta'at at all | every `الم` `حم` `المص` `كهيعص` `طه` `يس` `عسق` opening |
+| 11 cases | hundreds, at no human cost |
+
+### The one thing this cannot do
+
+**A correct recitation contains no mistakes.** This corpus can move *coverage*
+and *false alarms* and nothing else — `DELIBERATE MISTAKES 2/2` still comes
+only from a human deliberately reciting one wrong. So Tier G **enlarges the
+denominator, it does not replace the human recordings**, and the deliberate
+mistake list under *Recordings still wanted* stays exactly as urgent.
+
+Keeping that straight matters: a corpus that only measures false alarms
+rewards an app that says nothing.
 
 ### Work
 
-Bake-off first, port second. Add a second engine behind the existing
-`transcribe_window()` seam and measure it on the same corpus before changing
-anything else.
+1. **`scripts/fetch_recitations.py`** — per-ayah audio from a published source
+   (EveryAyah-style per-ayah files, or the Quran.com audio API), into
+   `tests/recitations/<reciter>/<surah>_<ayah>.mp3`.
+   - **Check the terms of use of whichever source is chosen and record them in
+     the script**, the way `fetch_ctc_model.py` records model licences. These
+     are somebody's recordings; a research corpus is not a licence to
+     redistribute, so the audio stays out of git — the script fetches, and a
+     manifest under version control says what to fetch.
+   - Several reciters, deliberately different in pace: a slow muratal and a
+     fast one at least, since *very slow with stretched madd* and *very fast*
+     are both on the wanted list.
+2. **Stratified selection, not uniform random.** Uniform sampling over 6,236
+   ayahs gives mostly medium ayahs from the middle of the Quran and would miss
+   every case that has ever broken this app. Sample deliberately:
+
+   | stratum | why | roughly |
+   |---|---|---|
+   | muqatta'at openings | `الم` was invisible for months; `حم` still is | all 28 one-word ayahs |
+   | surah openings + basmala | the hardest phrase to place, every session starts with one | 30 |
+   | very long ayahs (>50 words) | 2:282, 4:11-12, 5:6 | 20 |
+   | very short ayahs (≤3 words) | juz 30, Ar-Rahman's refrain | 40 |
+   | near-identical neighbours | 83:14–18 `كَلَّا`, 55's refrain, 26's refrain | 30 |
+   | uniform random | the ordinary case, as a control | 100 |
+
+   Seed the sampler and commit the seed, so the corpus is reproducible and a
+   regression can be traced to a specific ayah rather than to luck.
+3. **Runs of consecutive ayahs, not only single ones.** Half the app's
+   behaviour is transitions — gap-fill, page turns, tracking across a
+   boundary. Fetch some 3–5 ayah runs and concatenate them.
+4. **`--from-recitations` in the benchmark**, alongside `--from-session`.
+   Expectations are generated, not typed, so the Tier D class of error cannot
+   recur.
+5. **Report per stratum.** One overall number will hide a category failing
+   completely — which is exactly how `surah ala 11` scored zero for months.
 
 ### Gate
 
 ```bash
-python scripts/benchmark_recordings.py --model <candidate>
+python scripts/fetch_recitations.py --plan        # what it would fetch
+python scripts/fetch_recitations.py --agree
+python scripts/benchmark_recordings.py --from-recitations
 ```
 
-Must beat the current model on coverage **and** false alarms, and keep 2/2, on
-a corpus of at least 30 recordings.
+| Measure | Now | Target |
+|---|---|---|
+| Corpus size | 11 | **200+ ayahs, 3+ reciters** |
+| Muqatta'at cases | 0 | **all 28** |
+| Ayahs over 50 words | 0 | **20** |
+| Coverage, whole corpus | 99.4% (on 11) | **≥ 95% on the enlarged one** |
+| False alarms | 0.6% | **report per stratum** |
+| Deliberate mistakes | 2/2 | **2/2 — unchanged, and still from humans** |
+
+Expect coverage and false alarms to get *worse* on first contact. That is the
+point: 99.4% on eleven easy recordings is not a measurement of the app, it is
+a measurement of the corpus.
+
+### What the result changes
+
+- **If a stratum fails badly** → that stratum becomes the next tier, and it
+  will be a real failure rather than one inferred from a session by hand.
+- **If other reciters score much worse than the one this was tuned on** →
+  the tuning is overfitted, and the constants in `config.py` need re-deriving
+  against the wider corpus before anything else is attempted.
+- **If CTC (Tier F) wins on this corpus but not the old one** → trust this
+  one. It is bigger, its labels are machine-derived, and it contains the
+  cases that actually break things.
+
+---
+
+# Tier H — A minimal UI that exposes the choices
+
+*Planned, not started.*
+
+### Why
+
+Two things are now settings and neither is reachable without editing Python:
+**which engine runs** (Tier F) and **whether the session is recorded**
+(Tier 3). A bake-off you can only run from a terminal will be run once; one
+you can flip mid-session gets run every day, and the app already reloads the
+engine on a background thread, so switching is a supported operation rather
+than a restart.
+
+The constraint is that this app is a Mushaf. The page is the interface and
+everything else should stay out of its way — the current floating pill is
+right, and the work is to extend it without turning it into a settings screen.
+
+### Work
+
+1. **Engine picker in the pill.** A single control showing the current
+   engine's label; tapping it lists `engine_choices()` with the one-line
+   description each engine already carries. Selecting one starts a new
+   `ModelLoaderThread(engine_name=…)` — already supported — and the pill shows
+   *loading* until it is ready. An engine whose model is missing is listed but
+   disabled, with `EngineUnavailable`'s message as the tooltip, since that
+   message already says what to do about it.
+2. **Record toggle**, replacing `--record`. It is a per-session decision, and
+   deciding it before launch is the reason most sessions are not captured.
+3. **Live state, not chrome.** The pill has room for what the reciter cannot
+   otherwise know: whether the app is *searching* or *following*, and where it
+   thinks it is. One line, only while it matters.
+4. **Keep settings out of the page.** No preferences window. If a control does
+   not need to be touched during a session, it belongs in `config.py`.
+5. **The basmala line and the amber "unclear" verdict need a legend once** —
+   three colours now mean three different things (correct, wrong, *not sure*)
+   and nothing tells the reciter that.
+
+### Gate
+
+Not a numbers tier; it is judged by use.
+
+| Measure | Target |
+|---|---|
+| Switch engine without restarting | **works, mid-session** |
+| Sessions recorded | goes up, because the toggle is in reach |
+| Mushaf area lost to controls | **none** |
+| Benchmark coverage / false alarms / caught | **unchanged — this tier touches no scoring** |
+
+A UI change that moves a scoring number means something is wired wrong.
+
+### What the result changes
+
+If switching engines mid-session is easy, the Tier F bake-off stops being a
+one-off and becomes the normal way to compare — which is how the model choice
+should have been made from the start.
 
 ---
 
 # Recordings still wanted
 
-`./run.sh --record` now captures a session automatically and
-`benchmark_recordings.py --from-session <dir>` turns it into cases, so most of
-this is a matter of reciting rather than editing files. Check a clip's label
-before trusting it, then move it into `tests/records/` with a proper name.
+**Tier G will fetch the bulk of a corpus** — published recitations by
+established qāriʾ, with ground truth from the URL rather than typed by hand.
+What follows is what fetching *cannot* produce.
 
-**Already captured and worth promoting into the corpus:**
-- `logs/session-20260919-144355/` — random revision across Al-Hijr, five
-  discovery episodes, and 15:75/15:77 confused with 15:76 dropped
-- An-Nisa 4:11–12 from `logs/hifz-20260919-140605.log` — the long-ayah case
+### Deliberate mistakes — the only thing a human can record
 
-**Deliberate mistakes**, one per kind (we have 2, want ~8): similar-sounding
-letter (`ذ`→`د`, `ح`→`ه`); **wrong vowel only** (`كَتَبَ`/`كُتِبَ`) — Tier 3.6
-stopped grading short vowels and there is no case in the corpus to measure
-what that cost, so **record this one first**; skipped word; skipped ayah;
-repeated word; stop mid-word and restart; jump to a similar ayah elsewhere.
+A correct recitation contains no mistakes, so `DELIBERATE MISTAKES 2/2` can
+only ever come from someone reciting one wrong on purpose. We have 2 and want
+~8. **This list does not get easier when Tier G lands; it gets more important**,
+because a corpus that only measures false alarms rewards an app that says
+nothing.
 
-**Orthography**, where hand-written rules can be silently wrong:
-- 78:35–36 `لَّا يَسْمَعُونَ فِيهَا لَغْوًا وَلَا كِذَّابًا` (the shadda bug)
-- heavy shadda: 112:1–4
-- alef maddah / dagger alef: `ءَامَنُوا`, `ذَٰلِكَ`, `الرَّحْمَٰنِ`
+- **Wrong vowel only** (`كَتَبَ`/`كُتِبَ`) — **record this first.** Tier 3.6
+  stopped grading short vowels and there is no case in the corpus to measure
+  what that cost.
+- Similar-sounding letter (`ذ`→`د`, `ح`→`ه`)
+- Dropped definite article (`الْيَتَامَىٰ`→`يَتَامَى`) — happened for real in
+  `logs/hifz-20260919-131925.log` and was caught; it needs to stay caught
+- Skipped word; skipped ayah; repeated word
+- Stop mid-word and restart
+- Jump to a similar ayah elsewhere (one `كَلَّا` ayah to another)
 
-**Real conditions** — the 11 hand-made recordings all start cleanly and run
-forward:
+### Real conditions
+
+A fetched recitation is studio-clean and so are all 11 hand-made ones:
+
 - long pauses (5–10s) mid-ayah, then resuming
 - coughing, throat-clearing, background noise
-- very slow with stretched madd; and very fast
+- a phone on a table across the room
 
-**Other voices.** Everything is still tuned on one reciter.
+### Already captured, worth promoting
 
----
+- `logs/session-20260919-144355/` — random revision across Al-Hijr, four
+  discovery episodes, 15:75/15:77 confused with 15:76 dropped
+- An-Nisa 4:11–12 from `logs/hifz-20260919-140605.log` — long dense ayahs
+
+`./run.sh --record` captures a session and `--from-session` turns it into
+cases. **A captured clip is a candidate until someone listens to it** — Tier D
+found two hand-typed labels wrong, and automation makes wrong labels cheaper,
+not rarer.
 
 # Done
 
