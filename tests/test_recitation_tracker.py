@@ -4,7 +4,7 @@ from src.config import (
     TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
     PRELOCK_BUFFER_SECONDS,
 )
-from src.core.quran import QuranIndex, VerseMatch, WordResult
+from src.core.quran import QuranIndex, VerseMatch, WordResult, BASMALA_TEXT
 from src.core.page_map import PageMap
 from src.ui.recitation import RecitationTracker
 
@@ -628,6 +628,79 @@ class BeforeTheLockTests(unittest.TestCase):
 
         self.assertNotIn((1, 1, 0), mushaf.final(),
                          "a stale transcription was placed against a new lock")
+
+
+class BasmalaTests(unittest.TestCase):
+    """It is an ayah only at 1:1, and recited before every surah."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+        cls.page_map = PageMap()
+
+    def _tracker(self, mushaf):
+        return RecitationTracker(mushaf, self.page_map, self.index,
+                                 clock=FakeClock())
+
+    def test_the_basmala_is_shown_even_where_it_is_not_an_ayah(self):
+        """Opening any surah but Al-Fatiha used to give a blank page."""
+        tracker = self._tracker(DummyMushafView())
+        html = tracker.on_result({
+            "text": "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ", "match": None,
+            "mode": "discovery", "attempted": True})
+        self.assertIn("الرَّحِيمِ", html)
+
+    def test_it_survives_the_lock(self):
+        """It is the first thing recited, so it must not vanish when the
+        first ayah arrives and the panel is rebuilt."""
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+        for text in ("بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
+                     "لَعَمْرُكَ إِنَّهُمْ لَفِي سَكْرَتِهِمْ"):
+            match = (self.index.discover(text) if tracker.mode == "discovery"
+                     else self.index.track(text, tracker.last_surah,
+                                           tracker.last_ayah,
+                                           tracker.last_word_index))
+            html = tracker.on_result({"text": text, "match": match,
+                                      "mode": tracker.mode, "attempted": True})
+        self.assertEqual(tracker.last_surah, 15)
+        self.assertIn(BASMALA_TEXT, html)
+
+    def test_a_passing_al_rahman_al_rahim_is_not_a_basmala(self):
+        """55:1 is الرَّحْمَٰنُ on its own and 1:3 is الرَّحْمَٰنِ الرَّحِيمِ."""
+        tracker = self._tracker(DummyMushafView())
+        html = tracker.on_result({
+            "text": "الرَّحْمَنِ الرَّحِيمِ", "match": None,
+            "mode": "discovery", "attempted": True})
+        self.assertNotIn(BASMALA_TEXT, html)
+
+
+class AyahBoundaryTests(unittest.TestCase):
+    """Two words either side of a boundary are neighbours by accident."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+
+    def test_a_stale_two_word_phrase_does_not_place_the_reciter(self):
+        """The basmala's last word plus the first word of what followed read
+        as "الرحيم قال" — unique across 28:16/28:17 — and sent the app 150
+        pages into Al-Qasas while the reciter was opening Al-Hijr.
+        Verbatim from logs/hifz-20260919-144348.log.
+        """
+        match = self.index.discover("الرَّحِيم قَالَ هَ")
+        self.assertIsNone(
+            match,
+            f"locked onto {match.surah_id}:{match.ayah_id} on two leftover words"
+            if match else "",
+        )
+
+    def test_a_two_word_phrase_at_the_tail_still_places_the_reciter(self):
+        """The freshest two words are what the reciter is saying now, and a
+        short chunk is often all there is. Al-Fatiha locks on exactly this."""
+        match = self.index.discover("رَحْمَنِ الرَّحِيمِ الْحَمْدُ")
+        self.assertIsNotNone(match)
+        self.assertEqual(match.surah_id, 1)
 
 
 if __name__ == "__main__":

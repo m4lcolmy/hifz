@@ -45,6 +45,45 @@ class VerseMatch:
     words: list[WordResult]
 
 
+# The basmala, normalized. It is a numbered ayah only at 1:1, but it is
+# recited before every surah, so the app hears it constantly with nothing to
+# match it against — and its loose tail is worse than useless. In
+# logs/hifz-20260919-144348.log "الرَّحِيم قَالَ هَ" matched a trigram spanning
+# the 28:16/28:17 boundary, and the app jumped 150 pages into Al-Qasas.
+BASMALA = ("بسم", "الله", "الرحمن", "الرحيم")
+BASMALA_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+
+
+def _same_word(heard: str, expected: str) -> bool:
+    """Equal, or one clipped by a window boundary — سم for بسم."""
+    if heard == expected:
+        return True
+    shorter, longer = sorted((heard, expected), key=len)
+    return (len(shorter) >= 2
+            and (longer.startswith(shorter) or longer.endswith(shorter)))
+
+
+def basmala_prefix(trans_norm: list[str]) -> int:
+    """How many leading words of a transcription are part of a basmala.
+
+    The reciter may be heard from partway in — a window that opens mid-phrase
+    gives "رحمن الرحيم" — so the transcription is aligned against every
+    starting point in the basmala, not just the first.
+
+    Two words are required. One is not enough: اللَّهِ alone is the commonest
+    word in the Quran, and الرَّحْمَٰنِ is an ayah of its own at 55:1.
+    """
+    best = 0
+    for start in range(len(BASMALA)):
+        k = 0
+        while (k < len(trans_norm) and start + k < len(BASMALA)
+               and _same_word(trans_norm[k], BASMALA[start + k])):
+            k += 1
+        if k >= 2:
+            best = max(best, k)
+    return best
+
+
 class QuranIndex:
     """Searchable index of the entire Quran text.
 
@@ -162,6 +201,15 @@ class QuranIndex:
             for offset in range(min(len(trans_norm) - n + 1, 4)):
                 start = len(trans_norm) - n - offset
                 if start < 0:
+                    break
+                # A two-word phrase is only trusted where it is freshest: the
+                # tail, which is what the reciter is saying now. Further back
+                # in a short noisy chunk it is leftovers, and leftovers land
+                # somewhere real — the basmala's last word followed by the
+                # first word of what came next read as "الرحيم قال", unique
+                # across the 28:16/28:17 boundary, and sent the app 150 pages
+                # into Al-Qasas while the reciter was opening Al-Hijr.
+                if n <= DISCOVERY_SHORT_NGRAM and offset > 0:
                     break
                 ngram = tuple(trans_norm[start:start + n])
                 candidates = self._ngram_index.get(ngram, [])

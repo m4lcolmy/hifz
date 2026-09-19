@@ -28,7 +28,8 @@ from src.config import (
     TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
     REDISCOVERY_MAX_GAP, PRELOCK_BUFFER_SECONDS, PRELOCK_MAX_CHUNKS,
 )
-from src.core.arabic import normalize
+from src.core.arabic import normalize, split_words
+from src.core.quran import BASMALA_TEXT, basmala_prefix
 from src.core.debug import log
 from src.core.page_map import PageMap
 from src.ui.mushaf_view import MushafView
@@ -167,6 +168,11 @@ class RecitationTracker:
         # (heard_at, text) for transcriptions discovery could not place. Kept
         # until the position is known, then re-matched against it.
         self._pending: list[tuple[float, str]] = []
+        # The basmala is a numbered ayah only at 1:1, so for every other surah
+        # there is no reference word to paint and the reciter opens to a blank
+        # page. Recognising it is the difference between "the app is thinking"
+        # and "the app is broken".
+        self._basmala_heard = False
 
     @property
     def mode(self) -> str:
@@ -186,6 +192,7 @@ class RecitationTracker:
         self._first_miss_at = None
         self._last_known = None
         self._pending.clear()
+        self._basmala_heard = False
 
     def set_position(self, surah: int, ayah: int, word_index: int = 0):
         """Manually set position (e.g. user tapped on Mushaf).
@@ -221,6 +228,7 @@ class RecitationTracker:
         # Discovery mode: show what we hear until the position is pinned down
         if self._mode == "discovery":
             if match is None:
+                self._note_basmala(text)
                 self._remember_unplaced(text)
                 return (
                     f'<p align="right" dir="rtl" style="margin-top:0px; margin-bottom:6px; color:#888;">'
@@ -282,6 +290,19 @@ class RecitationTracker:
         if self.last_surah is not None:
             self._last_known = (self.last_surah, self.last_ayah, self.last_word_index)
         return self._render()
+
+    def _note_basmala(self, text: str):
+        """Did the reciter just open with the basmala?
+
+        Three of its four words, so a passing الرحمن الرحيم — which is an ayah
+        of its own at 55:1 and part of 1:3 — cannot trigger it.
+        """
+        if self._basmala_heard or not text:
+            return
+        words = [normalize(w) for w in split_words(text)]
+        if basmala_prefix(words) >= 3:
+            self._basmala_heard = True
+            log.count("basmala_heard")
 
     def _remember_unplaced(self, text: str):
         """Hold a transcription discovery could not place.
@@ -558,9 +579,9 @@ class RecitationTracker:
     def _render(self) -> str:
         """Build the whole output panel from the current best evidence."""
         if not self._order:
-            return ""
+            return self._basmala_html()
 
-        blocks = []
+        blocks = [self._basmala_html()]
         current_key = None
         spans: list[str] = []
 
@@ -580,6 +601,22 @@ class RecitationTracker:
         if spans:
             blocks.append(self._paragraph(current_key, spans))
         return "".join(blocks)
+
+    def _basmala_html(self) -> str:
+        """Shown once the basmala is recognised, and kept for the session.
+
+        It is not scored: outside Al-Fatiha it is not part of any ayah, so
+        there is nothing to be right or wrong against. This says "heard", not
+        "correct" — and 1:1 is painted normally by the ayah machinery, so a
+        reciter of Al-Fatiha sees it twice over, which is honest.
+        """
+        if not self._basmala_heard:
+            return ""
+        return (
+            f'<p align="right" dir="rtl" '
+            f'style="margin-top:0px; margin-bottom:6px; color:{CORRECT_COLOR};">'
+            f'{BASMALA_TEXT}</p>'
+        )
 
     def _paragraph(self, key, spans: list[str]) -> str:
         surah_id, ayah_id = key
