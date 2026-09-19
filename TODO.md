@@ -30,8 +30,12 @@ python scripts/replay_session.py logs/<log>     # one past session, no audio
 ./run.sh --record                               # make the next session a test
 ```
 
-**Baseline today:** 85.1% coverage, 0.6% false alarms, 2/2 caught, 56 unit
+**Baseline today:** 99.4% coverage, 0.6% false alarms, 2/2 caught, 61 unit
 tests, 63 search cases.
+
+Coverage was 85.1% until Tier D found that two of the eleven recordings were
+labelled with ayahs they do not contain. **Before believing a number about the
+app, check the ground truth it is measured against.**
 
 ---
 
@@ -67,212 +71,100 @@ locked onto **Al-Qasas 28:16, 150 pages from Al-Hijr**.
 
 ---
 
-# Tier A — The basmala
+# Tier A — The basmala ✅ DONE
 
-**The oldest complaint and now the most expensive bug.** Do this first: it is
-small, it is the thing the reciter notices every single session, and it is the
-direct cause of a wrong lock-on.
-
-### Why
-
-The basmala is a numbered ayah only at **1:1**. For every other surah the
-Quran text has no words for it, so the app shows nothing while the reciter
-opens — which is most of the reason it "looks broken at the start".
-
-That was the known half. The new half is worse. `logs/hifz-20260919-144348.log`
-opens with the basmala, and its untethered tail glued itself to the first word
-of what followed:
-
-```
-[11.800s] ASR   text="وَالَحْمَنِ الرَّحِيمِ"
-[11.800s] MATCH mode=discovery ctx=none -> NO MATCH
-[12.089s] ASR   text="الرَّحِيم قَالَ هَ"
-[12.089s] MATCH mode=discovery ctx=none -> 28:16 offset=12
-[12.089s] MUSHAF load page 387 (for 28:16)
-```
-
-28:16 ends `الرَّحِيمُ` and 28:17 opens `قَالَ رَبِّ`. The trigram
-`الرحيم / قال / ه` is unique in the Quran — **across an ayah boundary** — so
-discovery took it, confidently, and sat in Al-Qasas for 6.6 seconds before
-giving up. Three words of a surah the reciter never touched are still painted
-on the page at the end of the session.
-
-Both halves have one cause: **the app has no idea the basmala is being said.**
-
-### Work
-
-1. Carry the basmala as reference text that belongs to a surah's *opening* but
-   is not a scorable ayah. Recognising it is what matters; painting it green
-   is a bonus, and it must never be scored against an ayah.
-2. When a transcription is recognised as the basmala, use it as a **prior, not
-   a match**: the reciter is about to start a surah, so the next phrase should
-   be matched against surah openings first.
-3. Refuse a discovery n-gram that spans an ayah boundary **when it is the only
-   evidence** — a phrase straddling two ayahs is a coincidence of adjacency
-   far more often than it is a real position.
-
-### Gate
-
-```bash
-./run.sh                    # basmala, then any surah
-python scripts/replay_session.py logs/hifz-20260919-144348.log
-python scripts/benchmark_recordings.py
-```
-
-| Measure | Now | Target |
+| Measure | Before | After |
 |---|---|---|
-| Wrong lock-ons in `144348` | 1 (28:16) | **0** |
-| Words scored outside the surah recited | 3 | **0** |
-| Basmala visible to the reciter | nothing at all | **shown** |
-| Coverage / false alarms / caught | 85.1% / 0.6% / 2-2 | **no worse** |
+| Wrong lock-ons in `144348` | 1 (Al-Qasas 28:16) | **0** ✅ |
+| Words scored outside the surah recited | 3 | **0** ✅ |
+| Discovery episodes in that session | 5 | **4** ✅ |
+| Basmala visible to the reciter | nothing at all | **shown** ✅ |
+| Coverage / false alarms / caught | no worse ✅ | |
 
-### What the result changes
+Recognised on three of its four words, so a passing `الرحمن الرحيم` — which is
+55:1 on its own and part of 1:3 — cannot trigger it. Shown but **not scored**:
+outside Al-Fatiha it is not part of any ayah, so it says *heard*, not
+*correct*.
 
-- **If step 3 alone removes the wrong lock-on** → do it and stop. It is the
-  cheapest of the three and needs no data change.
-- **If recognising the basmala also cuts time-to-first-highlight** → it
-  subsumes most of Tier C, because every session starts with one.
+The expensive half was the wrong lock-on. Discovery trusted a two-word phrase
+found anywhere in a short chunk, and the basmala's last word followed by the
+first word of what came next read as `الرحيم قال` — unique in the Quran across
+the 28:16/28:17 boundary. A two-word phrase is now trusted **only at the tail**
+of a transcription, where it is what the reciter is saying now rather than
+leftovers. Longer n-grams are unaffected and may still span an ayah boundary,
+which is what continuous recitation looks like.
+
+**Two approaches that do not work**, so they are not tried again: stripping a
+basmala prefix before discovery breaks Al-Fatiha, which locks on
+`رحمن الرحيم الحمد` where those words really are 1:1; and refusing *every*
+cross-ayah bigram breaks the same case. The discriminator is tail-versus-not,
+not inside-ayah-versus-across.
 
 ---
 
-# Tier B — Long ayahs
+# Tier B — Long ayahs ❌ PREMISE REFUTED
 
-### Why
+**There is no long-ayah problem.** The tier was built on An-Nisa 4:11 scoring
+29 of 71 words, and that number was mine, not the app's.
 
-An-Nisa 4:11 (71 words) scored **29 of 71**. 4:12 (88 words) scored 87 of 88
-but the pair produced **17 red words**. Nothing in the benchmark is longer
-than 17 words, so none of this has ever been measured.
+Two measurements killed it:
 
-Two mechanisms are suspected and they are separable — **measure before
-fixing**:
+1. **The window is not the constraint.** Replaying `140605` with
+   `TRACKING_WINDOW` at 25 / 40 / 60 / 90 scored 143, 138, 138, 138 words.
+   Widening it is neutral to slightly worse.
+2. **4:11 was never recited from the start.** The lock landed at
+   `offset=42` on `فَإِنْ كَانَ لَهُ` — the reciter jumped into the middle of
+   the ayah. The 42 unscored words were never said.
 
-- **`TRACKING_WINDOW = 25`.** The tracker looks 25 reference words ahead of
-  the pointer. That is three ayahs in Al-Mulk and **a third of one ayah** in
-  An-Nisa. A pause mid-ayah, or one skipped clause, can put the reciter
-  outside the window entirely.
-- **Repeated formulas inside one ayah.** `مِن بَعْدِ وَصِيَّةٍ يُوصِي بِهَا أَوْ
-  دَيْنٍ` occurs several times inside 4:11–12, and `تَرَك` appears at word
-  indexes 3, 17, 28 and 41 of 4:12 alone. `track()` anchors on the longest
-  matching run, and with four identical candidates the longest run is a
-  coin toss. The reds read exactly like this: `عَلَيْكُمْ` heard as `تَرَكَ`,
-  `جُنَاحٌ` heard as `أَزْوَاجُكُمْ` — words that are genuinely in the ayah,
-  attached to the wrong position.
+And the control case settles it: **An-Nisa 4:12 is 88 words, was recited in
+full, and scored 87 of 88.** The longest ayah in the sessions is also one of
+the best covered.
 
-### Work
+This is the same trap Tier 3 built the `partial` flag for, and I walked into it
+anyway while reading a session by hand. **Coverage is only meaningful against
+what was actually recited.**
 
-1. **First, measure which one it is.** Replay `140605` with `TRACKING_WINDOW`
-   at 25, 40 and 60 and record coverage each time. That is one number and it
-   settles the question.
-2. If the window is the problem, scale it with the current ayah's length
-   rather than fixing it in words.
-3. If repeated formulas are the problem, break the tie by **distance from the
-   pointer** rather than run length — the reciter is far more likely to be
-   where they just were.
-4. Add `surah nisa 11-12` to `tests/records/` so this is never re-measured by
-   hand. `./run.sh --record` already produces it.
+The 17 red words in that session are real, but they are ASR garbage on dense
+text — `فَلِأُمِّهِ` heard as `فَلَكُورٌ`, `السُّدُسُ` as `بُهُ`. That is Tier F,
+not the matcher.
 
-### Gate
-
-```bash
-python scripts/replay_session.py logs/hifz-20260919-140605.log
-python scripts/benchmark_recordings.py
-```
-
-| Measure | Now | Target |
-|---|---|---|
-| 4:11 words scored | 29 / 71 | **≥ 60 / 71** |
-| 24:29 words scored | 5 / 17 | **≥ 14 / 17** |
-| Red words in that session | 17 | **< 6** |
-| Benchmark coverage / false alarms / caught | 85.1% / 0.6% / 2-2 | **no worse** |
-
-### What the result changes
-
-- **If widening the window fixes it** → the fix is one constant and Tier B is
-  done in an hour. Check it does not slow tracking on short surahs.
-- **If it is the repeated formulas** → the same tie-break helps everywhere,
-  because near-identical ayahs are the other half of Tier C.
+*A proximity tie-break for `track()`'s anchor was implemented and reverted: it
+moved no number on any session or on the benchmark. Unmeasured complexity is
+not kept.*
 
 ---
 
-# Tier C — Stop paying for every jump
+# Tier D — The words the benchmark never showed ✅ DONE
 
-### Why
+**Both gaps were errors in the ground truth, not in the app.** Coverage
+85.1% → **99.4%**, with no change to the app at all.
 
-`144348` is the first recording of how hifz is actually revised: a few ayahs
-from one place, a few from another. Al-Hijr 15:72–77, then 15:52–56, then
-15:67–70.
+**`surah ala 11` — 0 words scored, position FOUND.** The audio is
+`وَالسَّمَاءِ ذَاتِ الرَّجْعِ`, which is **At-Tariq 86:11**, not Al-A'la 87:11
+(`وَيَتَجَنَّبُهَا الْأَشْقَى`). The app had been finding 86:11 correctly all
+along and being scored against the wrong surah for it. Adjacent surah numbers;
+nobody checked. Renamed to `surah tariq 11.flac`, expectation corrected, and
+it now scores 3/3.
 
-Every located ayah was scored **completely** — 9/9, 7/7, 8/8, 5/5. The matcher
-is not the problem. **Finding the place again is.**
+**`surah mutaffifin 1-19` — 24 words.** The audio does not contain 83:15, 83:16
+or 83:17: none of `مَحْجُوب` / `لَصَالُو` / `الْجَحِيم` / `تُكَذِّبُون` is ever
+transcribed, and 83:14 and 83:18 are **0.3 seconds apart**. All five of those
+ayahs open `كَلَّا`, which is how the skip was made and how it was missed.
+Marked `partial`.
 
-| | |
-|---|---|
-| Discovery episodes in 110s | **5** |
-| Seconds with a blank page | **~17 of 110** |
-| Wrong lock-ons | 1 (Tier A) |
-| Re-lock cost after a jump | 1.9s – 3.9s |
+`partial` now contributes a recording's *scored* words to the coverage total
+rather than dropping it entirely — otherwise excluding Al-Mutaffifin threw away
+69 real words and made the percentage jump for reasons unrelated to the app.
 
-The recorded session shows the other half, on disk, already isolated:
-`006_15-75_ان-في-ذلك.flac` and `007_15-77_ان-في-ذلك.flac` — two clips with the
-**same name**, because 15:75 and 15:77 both open `إِنَّ فِي ذَٰلِكَ لَآيَاتٍ`.
-15:76 was skipped between them. Clips 009/011 and 010/012 show 15:52 and 15:53
-each entered twice.
+**One word is still unshown**, in `fatiha first 2 ayahs`. Small enough to leave.
 
-### Work
+### What this changes
 
-1. **Prefer the page already on screen**, then the surah already being
-   recited. A jump within Al-Hijr should not be a global search. (This is the
-   old Tier 2 step 1, now justified by a session rather than by argument.)
-2. **Tap a word on the Mushaf to start there.** `set_position()` has been
-   written and tested since the beginning and has never had a caller. For
-   deliberate random revision this is the honest answer: the reciter knows
-   where they are going and the app does not.
-3. Break ties between near-identical ayahs by proximity to the last known
-   position — shared with Tier B step 3.
-
-### Gate
-
-```bash
-python scripts/replay_session.py logs/hifz-20260919-144348.log
-./run.sh                    # recite a few ayahs, jump, recite a few more
-python scripts/benchmark_recordings.py
-```
-
-| Measure | Now | Target |
-|---|---|---|
-| Seconds unlocked in `144348` | ~17 / 110 | **< 7 / 110** |
-| Re-lock after a jump within the same surah | 1.9–3.9s | **< 1.5s** |
-| 15:76 (skipped between two near-identical ayahs) | missing | **shown** |
-| Wrong lock-ons | 1 | **0** |
-| Benchmark coverage / false alarms / caught | 85.1% / 0.6% / 2-2 | **no worse** |
-
-### What the result changes
-
-- **If the page prior causes a wrong lock-on anywhere** → it is too strong;
-  make it a tie-break among otherwise-equal candidates, never an override.
-- **If tapping to start removes most of the pain** → deprioritise the priors.
-  A reciter who can say where they are is better evidence than any heuristic.
-
----
-
-# Tier D — The 27 words the benchmark never shows
-
-*Small, already isolated, and the corpus for it exists. Good work to fill gaps
-between the larger tiers.*
-
-| recording | unseen | note |
-|---|---|---|
-| `surah mutaffifin 1-19` | **24** | all of 83:15–17 — the tracker went 83:14 → 83:18, and all five of those ayahs open `كَلَّا`. Same root cause as Tier B step 3. |
-| `surah ala 11` | **2** | **position FOUND, zero words scored.** Finding where the reciter is and then showing nothing is the worst outcome the app has. |
-| `fatiha first 2 ayahs` | 1 | |
-
-### Gate
-
-```bash
-python scripts/benchmark_recordings.py
-```
-
-Coverage up from 85.1%; false alarms and 2/2 no worse.
+**Ground truth is now a thing to verify, not assume.** Two of eleven recordings
+were wrong, both in the direction of making the app look worse, and both
+survived every gate for months because nothing ever checked the audio against
+the label. `./run.sh --record` makes new cases cheap — it also makes wrong
+labels cheap, so a captured clip is a *candidate* until someone listens to it.
 
 ---
 

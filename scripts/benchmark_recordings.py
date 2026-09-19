@@ -70,13 +70,25 @@ class Expectation:
 
 EXPECTATIONS = [
     Expectation("fatiha first 2 ayahs", 1, (1, 2), (), "starts with bismillah"),
-    Expectation("surah ala 11", 87, (11, 11), (), "single short ayah"),
+    # Recorded as "ala 11", but the audio is وَالسَّمَاءِ ذَاتِ الرَّجْعِ —
+    # At-Tariq 86:11, not Al-A'la 87:11 (which is وَيَتَجَنَّبُهَا الْأَشْقَى).
+    # The app had been finding 86:11 correctly all along and being scored
+    # against the wrong surah for it: 0 ok, 2 words "never shown". Adjacent
+    # surah numbers, and nobody checked.
+    Expectation("tariq 11", 86, (11, 11), (), "single short ayah"),
     Expectation("baqarah ayahs 6-7", 2, (6, 7), ((2, 7, 9),), "وَلَهُمْ recited with ف"),
     Expectation("hujurat 13", 49, (13, 13), ((49, 13, 6),), "mistake in وَأُنثَىٰ"),
     Expectation("insan 7", 76, (7, 7), (), ""),
     Expectation("kawthar 1", 108, (1, 1), (), "3-word ayah, cold start"),
     Expectation("muddathir 8-10", 74, (8, 10), (), ""),
-    Expectation("mutaffifin 1-19", 83, (1, 19), (), "long, pauses between ayahs"),
+    # Named "1-19", but 83:15, 83:16 and 83:17 are not in the audio: none of
+    # مَحْجُوب / لَصَالُو / الْجَحِيم / تُكَذِّبُون is ever transcribed, and 83:14
+    # and 83:18 are 0.3s apart — all five of those ayahs open كَلَّا, so the
+    # skip is easy to make and easy to miss. The app was tracking it correctly
+    # and being charged 24 words it was never given.
+    Expectation("mutaffifin 1-19", 83, (1, 19), (),
+                "long, pauses between ayahs; audio skips 83:15-17",
+                partial=True),
     Expectation("nisa 11 from the middle", 4, (11, 11), (), "starts mid-ayah",
                 partial=True),
     Expectation("qadr 1-2", 97, (1, 2), (), ""),
@@ -376,8 +388,16 @@ def report(results: list[Result]):
     print(f"  position found          {found}/{len(results)} recordings")
     print(f"  words scored            {total_scored}  (ok={total_ok} wrong={total_wrong} "
           f"missed={total_missed})")
-    total_expected = sum(r.expected_words for r in results
-                         if not r.expectation.partial)
+    # A partial recording still contributes the words it did cover — it is
+    # only the words never recited that cannot be charged to the app. Dropping
+    # such a recording entirely would throw away real coverage (Al-Mutaffifin
+    # alone accounts for 69 scored words) and make the percentage jump about
+    # for reasons that have nothing to do with the app.
+    total_expected = sum(
+        (r.ok + r.wrong + r.missed) if r.expectation.partial
+        else r.expected_words
+        for r in results
+    )
     total_unshown = sum(r.unshown for r in results)
     if total_expected:
         seen = total_expected - total_unshown
