@@ -78,178 +78,6 @@ reaches those. That is Tier F.
 
 ---
 
-# Tier A — The basmala ✅ DONE
-
-| Measure | Before | After |
-|---|---|---|
-| Wrong lock-ons in `144348` | 1 (Al-Qasas 28:16) | **0** ✅ |
-| Words scored outside the surah recited | 3 | **0** ✅ |
-| Discovery episodes in that session | 5 | **4** ✅ |
-| Basmala visible to the reciter | nothing at all | **shown** ✅ |
-| Coverage / false alarms / caught | no worse ✅ | |
-
-Recognised on three of its four words, so a passing `الرحمن الرحيم` — which is
-55:1 on its own and part of 1:3 — cannot trigger it. Shown but **not scored**:
-outside Al-Fatiha it is not part of any ayah, so it says *heard*, not
-*correct*.
-
-The expensive half was the wrong lock-on. Discovery trusted a two-word phrase
-found anywhere in a short chunk, and the basmala's last word followed by the
-first word of what came next read as `الرحيم قال` — unique in the Quran across
-the 28:16/28:17 boundary. A two-word phrase is now trusted **only at the tail**
-of a transcription, where it is what the reciter is saying now rather than
-leftovers. Longer n-grams are unaffected and may still span an ayah boundary,
-which is what continuous recitation looks like.
-
-**Two approaches that do not work**, so they are not tried again: stripping a
-basmala prefix before discovery breaks Al-Fatiha, which locks on
-`رحمن الرحيم الحمد` where those words really are 1:1; and refusing *every*
-cross-ayah bigram breaks the same case. The discriminator is tail-versus-not,
-not inside-ayah-versus-across.
-
----
-
-# Tier B — Long ayahs ❌ PREMISE REFUTED
-
-**There is no long-ayah problem.** The tier was built on An-Nisa 4:11 scoring
-29 of 71 words, and that number was mine, not the app's.
-
-Two measurements killed it:
-
-1. **The window is not the constraint.** Replaying `140605` with
-   `TRACKING_WINDOW` at 25 / 40 / 60 / 90 scored 143, 138, 138, 138 words.
-   Widening it is neutral to slightly worse.
-2. **4:11 was never recited from the start.** The lock landed at
-   `offset=42` on `فَإِنْ كَانَ لَهُ` — the reciter jumped into the middle of
-   the ayah. The 42 unscored words were never said.
-
-And the control case settles it: **An-Nisa 4:12 is 88 words, was recited in
-full, and scored 87 of 88.** The longest ayah in the sessions is also one of
-the best covered.
-
-This is the same trap Tier 3 built the `partial` flag for, and I walked into it
-anyway while reading a session by hand. **Coverage is only meaningful against
-what was actually recited.**
-
-The 17 red words in that session are real, but they are ASR garbage on dense
-text — `فَلِأُمِّهِ` heard as `فَلَكُورٌ`, `السُّدُسُ` as `بُهُ`. That is Tier F,
-not the matcher.
-
-*A proximity tie-break for `track()`'s anchor was implemented and reverted: it
-moved no number on any session or on the benchmark. Unmeasured complexity is
-not kept.*
-
----
-
-# Tier D — The words the benchmark never showed ✅ DONE
-
-**Both gaps were errors in the ground truth, not in the app.** Coverage
-85.1% → **99.4%**, with no change to the app at all.
-
-**`surah ala 11` — 0 words scored, position FOUND.** The audio is
-`وَالسَّمَاءِ ذَاتِ الرَّجْعِ`, which is **At-Tariq 86:11**, not Al-A'la 87:11
-(`وَيَتَجَنَّبُهَا الْأَشْقَى`). The app had been finding 86:11 correctly all
-along and being scored against the wrong surah for it. Adjacent surah numbers;
-nobody checked. Renamed to `surah tariq 11.flac`, expectation corrected, and
-it now scores 3/3.
-
-**`surah mutaffifin 1-19` — 24 words.** The audio does not contain 83:15, 83:16
-or 83:17: none of `مَحْجُوب` / `لَصَالُو` / `الْجَحِيم` / `تُكَذِّبُون` is ever
-transcribed, and 83:14 and 83:18 are **0.3 seconds apart**. All five of those
-ayahs open `كَلَّا`, which is how the skip was made and how it was missed.
-Marked `partial`.
-
-`partial` now contributes a recording's *scored* words to the coverage total
-rather than dropping it entirely — otherwise excluding Al-Mutaffifin threw away
-69 real words and made the percentage jump for reasons unrelated to the app.
-
-**One word is still unshown**, in `fatiha first 2 ayahs`. Small enough to leave.
-
-### What this changes
-
-**Ground truth is now a thing to verify, not assume.** Two of eleven recordings
-were wrong, both in the direction of making the app look worse, and both
-survived every gate for months because nothing ever checked the audio against
-the label. `./run.sh --record` makes new cases cheap — it also makes wrong
-labels cheap, so a captured clip is a *candidate* until someone listens to it.
-
----
-
-# Tier E — Accuracy, from Tilawa ✅ DONE (one adopted, two refuted)
-
-**One of the five helped. Two were refuted by measurement on our own data,
-and the way they failed is the strongest argument yet for Tier F.**
-
-### E.3 — Never condemn a word in a region you do not trust ✅ ADOPTED
-
-A wrong verdict between words that were themselves mis-heard is far more
-likely to be the alignment slipping than the reciter erring. A word is now
-shown as wrong only when **at least one neighbour in the same ayah is
-confidently correct**; otherwise it goes amber — *something happened here we
-could not read*.
-
-Painting moved out of `_commit` into a `_repaint` pass, because a word's
-colour can now change without new evidence about that word.
-
-| | An-Nisa 4:11–12 | Al-Mu'minun | Al-Hijr | benchmark |
-|---|---|---|---|---|
-| red before | 17 | 5 | 4 | 0.6%, 2/2 |
-| red after | **14** | **3** | 4 | **0.6%, 2/2** |
-
-No words lost. **Tilawa requires *both* neighbours clear; we require one.**
-Measured, the strict version takes false alarms to 0.0% and drops mistakes
-caught to **1/2** — it loses the Al-Hujurat `وَأُنثَىٰ` mistake, which sits in a
-stretch with five missed words. A drop in mistake detection disqualifies an
-item regardless of the false alarm number.
-
-### E.1 `heardRatio` and E.2 phoneme costs ❌ BOTH REFUTED
-
-Neither was implemented, because computing what they *would* decide on the
-words the app actually paints red settles it in one table. Tilawa's cost model
-(`phonemeCost.ts`: groups `ذدضتط` `ظزذصسث` `جزش` `ةهت` `قكغ` `فبم`, pairs
-`ه/ح` `غ/خ` `ء/ع` `ن/م` `ن/ل` `ظ/ض`), length-normalised:
-
-| heard | reference | distance | heardRatio | what it is |
-|---|---|---|---|---|
-| `فَقَالُوا` | `وَقَالُوا` | **0.17** | 1.00 | false alarm |
-| `فَلَهُمْ` | `وَلَهُمْ` | **0.25** | 1.00 | **deliberate mistake** |
-| `خُوبًا` | `حُوبًا` | **0.25** | 1.00 | false alarm |
-| `فُصِّدَتْ` | `فُصِّلَتْ` | **0.25** | 1.00 | false alarm |
-| `يَتَامَى` | `الْيَتَامَىٰ` | 0.29 | 0.71 | **real error** (dropped `ال`) |
-| `أَوْ` | `وَأُنثَىٰ` | 0.80 | **0.40** | **deliberate mistake** |
-| `بُهُ` | `السُّدُسُ` | — | **0.40** | false alarm |
-| `أَلِيمٌ` | `عَظِيمٌ` | 0.50 | 1.00 | false alarm |
-
-**There is no threshold that separates them.** The deliberate mistake sits at
-0.25, the same distance as two false alarms and *above* a third at 0.17. On
-`heardRatio` the deliberate mistake and a false alarm are both exactly 0.40.
-Any cut that forgives the false alarms forgives the mistake.
-
-That is not a flaw in Tilawa's design. It is what the numbers mean: **our
-remaining false alarms are acoustically identical to our real errors.** One
-letter wrong in a short word is one letter wrong in a short word, whether the
-reciter said it or the model misheard it. No function of the two strings can
-tell them apart.
-
-### E.4 waqf ✅ / E.5 never grade tajweed ✅
-
-Both settled in Tier 3.6, which stopped grading short vowels — waqf endings
-fall out for free, and not grading pronunciation quality is now the rule.
-
-### What this changes
-
-**Tier F is no longer optional, and this tier is the reason.** Every avenue for
-telling a real error from a mis-hearing *by comparing strings* is now closed:
-E.1 and E.2 are refuted arithmetically, E.3 is adopted and takes the remaining
-reds from 26 to 21 across three sessions. What is left needs either
-**agreement across windows** — which Tier 3.5 showed does not separate them
-either, since the windows agree on the wrong reading — or **an acoustic model
-that does not mishear in the first place.**
-
-Only the second is left.
-
----
-
 # Tier F — A second engine ✅ SEAM DONE, bake-off pending
 
 **The seam is in and Whisper is untouched.** Which engine runs is a setting,
@@ -304,11 +132,16 @@ work around. Tilawa reached the same conclusion and stopped using Whisper
 
 Both of the first two, not one. An engine that is quieter but blinder is worse.
 
-**Phoneme models need a mapping.** `zipformer` and `wav2vec2-quran` emit
-phonemes, not Arabic script, so they cannot be scored until phonemes map back
-to words. Try a character-level model first (`wav2vec2-arabic`) — it is the
-cheapest way to find out whether CTC helps *at all* before paying for the
-mapping.
+**The model to try is `quran-ctc`** —
+`rabah2026/wav2vec2-large-xlsr-53-arabic-quran-v_final`, Apache-2.0,
+`Wav2Vec2ForCTC`, fine-tuned on Quran recitation, and its vocabulary is fully
+diacritized (tanween, shadda, dagger alef, alef wasla). It feeds the matcher
+directly: no phoneme mapping, no format conversion.
+
+`zipformer` emits phonemes and is non-commercial; `fastconformer` needs
+conversion out of NeMo format. *`quran-dev/wav2vec2-ctc-quran-phoneme-…`,
+listed in earlier versions of this file, does not exist — it was never
+checked.*
 
 **Licences differ and one candidate is non-commercial only.** `fetch_ctc_model`
 prints each licence and refuses to download without `--agree`.
@@ -433,61 +266,77 @@ a measurement of the corpus.
 
 ---
 
-# Tier H — A minimal UI that exposes the choices
+# Tier H — Give the page back, and expose the two choices
 
 *Planned, not started.*
 
 ### Why
 
-Two things are now settings and neither is reachable without editing Python:
-**which engine runs** (Tier F) and **whether the session is recorded**
-(Tier 3). A bake-off you can only run from a terminal will be run once; one
-you can flip mid-session gets run every day, and the app already reloads the
-engine on a background thread, so switching is a supported operation rather
-than a restart.
+**The pill covers the Mushaf.** It is a child of `central` positioned
+absolutely — `main_window.py`, `resizeEvent()` — 240×48 at bottom centre, 40px
+up. The Mushaf takes the left 600px of a 1000px window, so the pill's left
+half sits on top of the page and hides the bottom of it. Nothing reserves that
+space; the page is laid out as if the pill were not there.
 
-The constraint is that this app is a Mushaf. The page is the interface and
-everything else should stay out of its way — the current floating pill is
-right, and the work is to extend it without turning it into a settings screen.
+This is the interface. A Mushaf you cannot read the bottom of is worse than
+one with a plain toolbar, and the floating pill was chosen for the opposite
+reason.
 
-### Work
+**And two things are now settings that no one can reach.** Tier F made the
+engine selectable and Tier 3 made recording a flag, but both are decided
+before launch:
 
-1. **Engine picker in the pill.** A single control showing the current
-   engine's label; tapping it lists `engine_choices()` with the one-line
-   description each engine already carries. Selecting one starts a new
-   `ModelLoaderThread(engine_name=…)` — already supported — and the pill shows
-   *loading* until it is ready. An engine whose model is missing is listed but
-   disabled, with `EngineUnavailable`'s message as the tooltip, since that
-   message already says what to do about it.
-2. **Record toggle**, replacing `--record`. It is a per-session decision, and
-   deciding it before launch is the reason most sessions are not captured.
-3. **Live state, not chrome.** The pill has room for what the reciter cannot
-   otherwise know: whether the app is *searching* or *following*, and where it
-   thinks it is. One line, only while it matters.
-4. **Keep settings out of the page.** No preferences window. If a control does
-   not need to be touched during a session, it belongs in `config.py`.
-5. **The basmala line and the amber "unclear" verdict need a legend once** —
-   three colours now mean three different things (correct, wrong, *not sure*)
-   and nothing tells the reciter that.
+```bash
+./run.sh --engine ctc --record
+```
+
+A bake-off you can only start from a terminal gets run once. One you can flip
+mid-session gets run daily — and `ModelLoaderThread` already takes an engine
+name, so switching is a supported operation rather than a restart.
+
+### Work — in this order
+
+1. **Stop the pill covering the page.** Reserve its footprint: give the
+   Mushaf view a bottom margin of the pill's height plus its gap, so the page
+   lays out above it and the pill floats over nothing. Keep the floating look
+   — it is right — but make the space real instead of borrowed.
+   *Check at small window sizes and after dragging the splitter, which is
+   where absolute positioning usually breaks.*
+2. **Engine picker in the pill.** One control showing the current engine's
+   label; tapping it lists `engine_choices()`, which already carries a
+   one-line description per engine. Selecting one starts a new
+   `ModelLoaderThread(engine_name=…)` and the pill shows *loading* until
+   ready. An engine whose model is missing is listed but disabled, with
+   `EngineUnavailable`'s message as the tooltip — that message already says
+   what to do about it.
+3. **Record toggle**, replacing `--record`. It is a per-session decision, and
+   having to decide it before launch is why most sessions are not captured.
+4. **A legend, once.** Three colours now mean three different things —
+   correct, wrong, and *not sure* (the amber from Tier E's untrusted-region
+   rule) — plus the basmala line, which is shown but never scored. Nothing
+   tells the reciter any of that.
+5. **Live state, not chrome.** Whether the app is *searching* or *following*
+   is the one thing the reciter cannot otherwise know, and it explains the
+   blank page during discovery. One line, only while it matters.
+
+### What stays out
+
+No preferences window. If a control does not need to be touched during a
+session it belongs in `config.py`. The page is the interface; every pixel
+spent on chrome is a pixel of Mushaf.
 
 ### Gate
 
-Not a numbers tier; it is judged by use.
+Judged by use, not by numbers — but one number must not move.
 
 | Measure | Target |
 |---|---|
+| Mushaf text hidden behind the pill | **none**, at any window size |
 | Switch engine without restarting | **works, mid-session** |
 | Sessions recorded | goes up, because the toggle is in reach |
-| Mushaf area lost to controls | **none** |
-| Benchmark coverage / false alarms / caught | **unchanged — this tier touches no scoring** |
+| Benchmark coverage / false alarms / caught | **unchanged** |
 
 A UI change that moves a scoring number means something is wired wrong.
-
-### What the result changes
-
-If switching engines mid-session is easy, the Tier F bake-off stops being a
-one-off and becomes the normal way to compare — which is how the model choice
-should have been made from the start.
 
 ---
 
@@ -583,6 +432,46 @@ other three. And `بَشِيرًا` came back `بِشِيرًا` from **eight wi
 tashkeel being its language model's rather than anything it heard.
 *Cost: a wrong-vowel-only mistake can no longer be caught, and there is no
 case in the corpus to measure it. See Recordings still wanted.*
+
+**Tier A — The basmala.** It is a numbered ayah only at 1:1, so opening any
+other surah gave a blank page. Recognised on three of its four words and shown
+but never scored. The expensive half was a wrong lock-on: discovery trusted a
+two-word phrase found anywhere in a short chunk, and the basmala's last word
+plus the first word of what followed read as `الرحيم قال` — unique across the
+28:16/28:17 boundary — sending the app 150 pages into Al-Qasas. Two-word
+phrases are now trusted only at the tail of a transcription.
+*Two approaches that do not work: stripping a basmala prefix before discovery,
+and refusing every cross-ayah bigram. Both break Al-Fatiha, which locks on
+`رحمن الرحيم الحمد` where those words really are 1:1.*
+
+**Tier B — Long ayahs. Premise refuted, nothing implemented.** Built on An-Nisa
+4:11 scoring 29 of 71 words, which was a counting error: the lock landed at
+`offset=42` because the reciter jumped into the middle of the ayah, so those
+words were never said. 4:12 is 88 words, was recited in full, and scored 87 of
+88. Sweeping `TRACKING_WINDOW` 25/40/60/90 scored 143/138/138/138, so the
+window was not it either. *A proximity tie-break for `track()`'s anchor was
+written and reverted — it moved no number anywhere.*
+
+**Tier D — The words the benchmark never showed. Both were ground-truth
+errors.** `surah ala 11` contains `وَالسَّمَاءِ ذَاتِ الرَّجْعِ` — At-Tariq 86:11,
+not Al-A'la 87:11 — so the app had been finding 86:11 correctly and being
+scored against the wrong surah, reported as *position FOUND, zero words*.
+`surah mutaffifin 1-19` does not contain 83:15–17: none of their distinctive
+words is ever transcribed and 83:14 and 83:18 are 0.3s apart. Coverage
+85.1% → **99.4% with no change to the app.** *Ground truth is a thing to
+verify, not assume.*
+
+**Tier E — Accuracy, from Tilawa. One adopted, two refuted.** E.3 adopted: a
+word is shown wrong only when at least one neighbour in the same ayah is
+confidently correct. Tilawa requires both; measured, that reaches 0.0% false
+alarms and drops mistakes to 1/2. E.1 `heardRatio` and E.2 phoneme costs were
+never implemented because computing what they *would* decide settles it: the
+deliberate mistake `فَلَهُمْ`/`وَلَهُمْ` scores 0.25, the same as false alarms
+`خُوبًا`/`حُوبًا` and `فُصِّدَتْ`/`فُصِّلَتْ`, and above `فَقَالُوا`/`وَقَالُوا` at
+0.17; on `heardRatio` the mistake `أَوْ`/`وَأُنثَىٰ` and the false alarm
+`بُهُ`/`السُّدُسُ` are both 0.40. **Our false alarms are acoustically identical
+to our real errors**, which is why Tier F is the only avenue left.
+`scripts/check_phoneme_costs.py` keeps the computation.
 
 **Tier 3.5 — "wrong" should need agreement.** Proposed, then **dropped**. The
 idea was that a word whose windows disagree is a word we failed to hear rather

@@ -47,12 +47,14 @@ CANDIDATES = {
         "note": "Streaming phoneme CTC. 100% recall on Tilawa's corpus. "
                 "Phoneme output needs a mapping back to Arabic script.",
     },
-    "wav2vec2-quran": {
-        "repo": "quran-dev/wav2vec2-ctc-quran-phoneme-recognition",
-        "licence": "check the model card before use",
-        "size": "large",
-        "note": "Tuned for mispronunciation detection — our exact task. "
-                "Loads directly with AutoModelForCTC, no conversion.",
+    "quran-ctc": {
+        "repo": "rabah2026/wav2vec2-large-xlsr-53-arabic-quran-v_final",
+        "licence": "Apache-2.0 — commercial use allowed",
+        "size": "~1.2 GB",
+        "note": "THE ONE TO TRY. Wav2Vec2ForCTC fine-tuned on Quran recitation, "
+                "and its vocabulary is fully diacritized — tanween, shadda, "
+                "dagger alef, alef wasla — so it feeds the matcher directly "
+                "with no phoneme mapping and no conversion.",
     },
     "wav2vec2-arabic": {
         "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-arabic",
@@ -74,7 +76,7 @@ def show():
         print(f"    {m['note']}")
     print("\n  " + "-" * 68)
     print("  Read the licence before downloading, then:")
-    print("    python scripts/fetch_ctc_model.py --model wav2vec2-arabic --agree")
+    print("    python scripts/fetch_ctc_model.py --model quran-ctc --agree")
     print("    python scripts/benchmark_recordings.py --engine ctc\n")
     print("  A model only stays if it beats Whisper on coverage AND false")
     print("  alarms while keeping 2/2 deliberate mistakes caught.\n")
@@ -82,7 +84,8 @@ def show():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--model", choices=sorted(CANDIDATES), help="which candidate")
+    ap.add_argument("--model", choices=sorted(CANDIDATES),
+                    help="which candidate (start with quran-ctc)")
     ap.add_argument("--agree", action="store_true",
                     help="confirm you have read and accept the model's licence")
     ap.add_argument("--dest", type=Path, default=CTC_MODEL_DIR)
