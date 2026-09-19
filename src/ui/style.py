@@ -1,25 +1,55 @@
-"""Stylesheet and theming constants."""
+"""Stylesheet and theming constants.
+
+Two surfaces, and they are deliberately different. The Mushaf is a *sheet* —
+a cream page on a neutral backdrop, with a border and a soft shadow, because
+that is what the reciter is looking at and it should read as paper. The bar
+under it is application chrome: flat, quiet, and the same white as the window.
+
+Anything painted on top of the page (the mask that hides an unrecited word)
+must use PAGE_BG, not white — the two are no longer the same colour, and a
+white mask on a cream page is a visible rectangle.
+"""
 
 from PyQt6.QtGui import QFont
 
-# ── Color palette (Light Modern Theme) ────────────────────────────────────
-BG_PRIMARY = "#FFFFFF"       # white background
+# ── Chrome ─────────────────────────────────────────────────────────────
+BG_PRIMARY = "#FFFFFF"       # window and bar
 BG_SURFACE = "#F9FAFB"       # soft gray surface
-BORDER = "#E5E7EB"           # subtle 1px borders
-TEXT_PRIMARY = "#000000"     # pure black text
-TEXT_SECONDARY = "#6B7280"   # muted gray text
-ACCENT = "#10B981"           # emerald green (from sketch)
-ACCENT_HOVER = "#059669"     # green hover
-ACCENT_PRESSED = "#047857"   # green pressed
-RECORD_ACTIVE = "#10B981"    # emerald green for recording
-RECORD_HOVER = "#059669"     # darker green hover
-RECORD_ERROR = "#EF4444"     # red for error state
+BORDER = "#E4E4E7"           # subtle 1px borders
+BORDER_STRONG = "#D4D4D8"    # page edge, where a hairline would disappear
+HOVER_BG = "#F4F4F5"         # button hover wash
+PRESSED_BG = "#E4E4E7"       # button pressed wash
+TEXT_PRIMARY = "#18181B"     # near-black: pure #000 reads as harsh on paper
+TEXT_SECONDARY = "#71717A"   # muted gray text
+TEXT_MUTED = "#A1A1AA"       # disabled / placeholder
+
+ACCENT = "#0F9D76"           # deep emerald — the app's one colour
+ACCENT_HOVER = "#0B8564"
+ACCENT_PRESSED = "#096B51"
+RECORD_ACTIVE = ACCENT
+RECORD_HOVER = ACCENT_HOVER
+RECORD_ERROR = "#DC2626"
+
+# ── The page ───────────────────────────────────────────────────────────
+PAGE_BACKDROP = "#E8E6E1"    # what the sheet sits on
+PAGE_BG = "#FDFCF8"          # the sheet itself — warm, barely off-white
+PAGE_BORDER = "#DAD6CC"      # the sheet's edge
+AYAH_MARK_COLOR = "#A98B4F"  # muted gold, as ayah markers are printed
+BANNER_BG = "#F7F2E6"        # inside the surah-title frame
 
 # ── Quran verification colors ─────────────────────────────────────────
-CORRECT_COLOR = "#10B981"    # emerald green — correct recitation
-INCORRECT_COLOR = "#EF4444"  # red — wrong word or diacritics
-MISSED_COLOR = "#F59E0B"     # amber — word skipped by reciter
+# There is no colour for correct recitation, and that is deliberate: a word
+# recited correctly is uncovered and left in the Mushaf's own ink. Only the
+# exceptions are coloured, so the two words worth looking at are not hidden
+# inside a page-wide wash of the colour that means "fine".
+INCORRECT_COLOR = "#DC2626"  # red — wrong word
+MISSED_COLOR = "#E0921A"     # amber — not sure, or skipped
 VERSE_REF_COLOR = "#9CA3AF"  # light gray — surah:ayah label
+CORRECT_COLOR = ACCENT       # kept for the unused HTML transcript only
+
+# How strongly a verdict tints the glyph underneath it. The glyph has to stay
+# readable through the colour: this is a highlighter, not a fill.
+TINT_ALPHA = 80
 
 
 STYLESHEET = f"""
@@ -39,79 +69,31 @@ STYLESHEET = f"""
         border-top: 1px solid {BORDER};
     }}
 
-    QPushButton#bar_icon {{
+    QWidget#bar_zone {{
         background-color: transparent;
-        color: {TEXT_SECONDARY};
-        font-size: 17px;
-        border: none;
-        border-radius: 8px;
-    }}
-
-    QPushButton#bar_icon:hover {{
-        background-color: #F3F4F6;
-        color: {TEXT_PRIMARY};
-    }}
-
-    QPushButton#bar_icon:pressed {{
-        background-color: #E5E7EB;
     }}
 
     /* Live state, at the end of the bar. Muted by default: it is there to
        be glanced at, not read. */
     QLabel#status {{
         color: {TEXT_SECONDARY};
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 500;
-        padding-right: 8px;
         background-color: transparent;
         border: none;
     }}
 
     QLabel#status[state="recording"] {{
-        color: {RECORD_ACTIVE};
+        color: {TEXT_PRIMARY};
     }}
 
     QLabel#status[state="transcribing"] {{
-        color: {ACCENT};
+        color: {TEXT_SECONDARY};
     }}
 
     QLabel#status[state="error"] {{
         color: {RECORD_ERROR};
     }}
-
-    QPushButton#record {{
-        background-color: transparent;
-        color: {TEXT_PRIMARY};
-        font-size: 15px;
-        font-weight: 700;
-        border: 1.5px solid {TEXT_PRIMARY};
-        border-radius: 20px;
-        padding-top: 1px; /* Center the icon */
-    }}
-
-    QPushButton#record:hover {{
-        background-color: #F3F4F6;
-    }}
-
-    QPushButton#record:pressed {{
-        background-color: #E5E7EB;
-    }}
-
-    QPushButton#record:disabled {{
-        color: {TEXT_SECONDARY};
-        border-color: {TEXT_SECONDARY};
-    }}
-
-    QPushButton#record[recording="true"] {{
-        color: white;
-        background-color: {RECORD_ACTIVE};
-        border-color: {RECORD_ACTIVE};
-    }}
-
-    QPushButton#record[recording="true"]:hover {{
-        background-color: {RECORD_HOVER};
-    }}
-
 
     /* The settings popup. The only menu in the app, and the only place a
        mid-session decision lives. */
@@ -129,11 +111,11 @@ STYLESHEET = f"""
     }}
 
     QMenu::item:selected {{
-        background-color: #F3F4F6;
+        background-color: {HOVER_BG};
     }}
 
     QMenu::item:disabled {{
-        color: {TEXT_SECONDARY};
+        color: {TEXT_MUTED};
     }}
 
     QMenu::item:checked {{
@@ -144,6 +126,15 @@ STYLESHEET = f"""
         height: 1px;
         background-color: {BORDER};
         margin: 6px 10px;
+    }}
+
+    QToolTip {{
+        background-color: {TEXT_PRIMARY};
+        color: {BG_PRIMARY};
+        border: none;
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 12px;
     }}
 """
 
@@ -176,6 +167,7 @@ def app_font() -> QFont:
     font = QFont()
     font.setFamilies(UI_FONT_FAMILIES)
     font.setPointSize(UI_FONT_SIZE)
+    font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     return font
 
 

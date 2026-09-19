@@ -27,6 +27,11 @@ class QCFWord:
     verse_key: str | None   # "surah:ayah" format, e.g. "1:1"
     position: int | None    # 1-based word position within the ayah
     line: int               # line number on the page (1-based)
+    # Which surah a header or bismillah line belongs to. Those two carry no
+    # verse_key — the bismillah is a numbered ayah only at 1:1 — so this is
+    # the only handle there is on the one line the reciter opens every surah
+    # with. Surah 9 has no bismillah line and therefore never appears here.
+    sura: int | None = None
 
 
 @dataclass
@@ -101,6 +106,7 @@ class QCFDataLoader:
                     verse_key=w.get("verse_key"),
                     position=w.get("position"),
                     line=line_num,
+                    sura=w.get("sura"),
                 ))
 
             lines.append(words)

@@ -15,7 +15,8 @@ Flow:
   1. Press play → mic opens, VAD monitors audio.
   2. When speech ends, the chunk transcribes.
   3. The transcription is matched against the Quran.
-  4. The page colours the words: green correct, red wrong, amber not sure.
+  4. The page uncovers the words, and colours only the exceptions: red
+     wrong, amber not sure. Correct recitation is left in plain ink.
   5. Press again → mic closes, remaining audio flushed.
 
 The transcriptions themselves are not shown and are not lost: they go to the
@@ -23,19 +24,24 @@ session log, which is on by default and is where anyone actually reads them.
 """
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QMenu, QWidgetAction,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy,
+    QLabel, QMenu, QWidgetAction,
 )
 from PyQt6.QtGui import QActionGroup
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint, QTimer
 from PyQt6.QtMultimedia import QAudioSource
 
 from pathlib import Path
 
 from src.ui.style import (
-    CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR, VERSE_REF_COLOR,
+    INCORRECT_COLOR, MISSED_COLOR, TEXT_PRIMARY,
+    ACCENT, TEXT_MUTED, TEXT_SECONDARY, RECORD_ERROR,
 )
-from src.config import STRICTNESS, STRICTNESS_LABELS, STRICTNESS_LEVELS
+from src.ui.widgets import (
+    TransportButton, SettingsButton, StatusDot, StatusLabel,
+)
+from src.config import (STRICTNESS, STRICTNESS_LABELS, STRICTNESS_LEVELS,
+                        SETTLE_TICK_MS)
 from src.ui.mushaf_view import MushafView
 from src.ui.recitation import RecitationTracker
 from src.audio.capture import default_audio_format, get_input_device
@@ -95,6 +101,16 @@ class MainWindow(QMainWindow):
             strictness=STRICTNESS,
         )
 
+        # A verdict is held back until no further audio window can revise it,
+        # which is a fact about elapsed time — so something has to ask about
+        # it when no window is arriving. Without this, pausing mid-page
+        # leaves the last words you recited uncoloured for as long as you
+        # stay quiet. Only repaints what changed, so it costs nothing while
+        # nothing is settling.
+        self._settle_timer = QTimer(self)
+        self._settle_timer.setInterval(SETTLE_TICK_MS)
+        self._settle_timer.timeout.connect(self._tracker.tick)
+
     def _center_window(self):
         """Center the main window on the current screen."""
         frame = self.frameGeometry()
@@ -127,49 +143,77 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._build_bar(central))
 
     def _build_bar(self, parent) -> QWidget:
+        """Settings at one end, play in the middle, state at the other.
+
+        The middle really is the middle. It used to be a stretch either side
+        of the button, which centres it in *what is left over* — so the
+        moment the state text grew, which it does every time a recorded
+        session is saved and the path is printed, the leftover space stopped
+        being symmetrical and the play button slid left. Two side zones of
+        equal stretch weight are always the same width whatever is in them,
+        and the button between them cannot move.
+        """
         bar = QWidget(parent)
         bar.setObjectName("bar")
-        bar.setFixedHeight(56)
+        bar.setFixedHeight(64)
 
         row = QHBoxLayout(bar)
-        row.setContentsMargins(12, 0, 12, 0)
-        row.setSpacing(8)
+        row.setContentsMargins(14, 0, 14, 0)
+        row.setSpacing(10)
 
         # ── Left: settings ────────────────────────────────────────────
-        self.settings_btn = QPushButton("\u2699")
-        self.settings_btn.setObjectName("bar_icon")
-        self.settings_btn.setFixedSize(36, 36)
-        self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_btn = SettingsButton()
         self.settings_btn.setToolTip("Settings")
         self.settings_btn.clicked.connect(self._show_settings)
-        row.addWidget(self.settings_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        row.addWidget(self._zone(bar, self.settings_btn), 1)
 
         # ── Centre: play, and nothing beside it ───────────────────────
-        # Stretches of equal weight either side keep it on the window's
-        # centre line rather than the centre of what is left over, so it does
-        # not shuffle when the state text changes length.
-        row.addStretch(1)
-        self.listen_btn = QPushButton("\u25b6")
-        self.listen_btn.setObjectName("record")
+        self.listen_btn = TransportButton()
         self.listen_btn.setEnabled(False)
-        self.listen_btn.setCheckable(True)
-        self.listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.listen_btn.setToolTip("Start listening")
         self.listen_btn.clicked.connect(self._toggle_listening)
-        self.listen_btn.setFixedSize(40, 40)
         row.addWidget(self.listen_btn, 0, Qt.AlignmentFlag.AlignCenter)
-        row.addStretch(1)
 
         # ── Right: what the app is doing, only while it matters ───────
         # Whether it is *searching* or *following* is the one thing the
         # reciter cannot otherwise know, and it is what explains the blank
         # page during discovery.
-        self.status_label = QLabel("Loading model\u2026")
+        self.status_dot = StatusDot()
+        self.status_label = StatusLabel()
         self.status_label.setObjectName("status")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignRight
-                                       | Qt.AlignmentFlag.AlignVCenter)
-        self.status_label.setMinimumWidth(140)
-        row.addWidget(self.status_label, 0, Qt.AlignmentFlag.AlignRight)
+        # Ignored, not Preferred: the label must never ask the layout for the
+        # width of its text. That request is what moved the play button.
+        self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                        QSizePolicy.Policy.Preferred)
+        # Label first, dot last. The dot then sits at the bar's right edge
+        # opposite the settings button, at a fixed place the eye can find,
+        # instead of drifting with the length of the text beside it.
+        row.addWidget(self._zone(bar, self.status_label, self.status_dot,
+                                 grow=0), 1)
+        self._set_status("Loading model\u2026", "transcribing")
         return bar
+
+    @staticmethod
+    def _zone(parent, *widgets, grow: int | None = None) -> QWidget:
+        """One end of the bar.
+
+        Both ends are given the same stretch weight in the bar's own layout,
+        so they are the same width whatever is in them — that is what holds
+        the play button between them on the window's centre line. `grow`
+        names the widget that absorbs the zone's slack; with none named, a
+        stretch takes it and the contents sit at the outer edge.
+        """
+        zone = QWidget(parent)
+        zone.setObjectName("bar_zone")
+        row = QHBoxLayout(zone)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        for index, widget in enumerate(widgets):
+            row.addWidget(widget, 1 if index == grow else 0,
+                          Qt.AlignmentFlag.AlignVCenter)
+        if grow is None:
+            row.addStretch(1)
+        return zone
 
     # ── Settings ───────────────────────────────────────────────────────
 
@@ -183,7 +227,7 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
 
         # ── How much evidence before a word is painted red ────────────
-        menu.addSection("Flag mistakes")
+        menu.addAction(self._section(menu, "Flag mistakes"))
         group = QActionGroup(menu)
         group.setExclusive(True)
         for level in STRICTNESS_LEVELS:
@@ -196,7 +240,8 @@ class MainWindow(QMainWindow):
 
         # ── Which engine turns audio into text ────────────────────────
         from src.audio.engines import DEFAULT_ENGINE, ENGINES, engine_choices
-        menu.addSection("Speech engine")
+        menu.addSeparator()
+        menu.addAction(self._section(menu, "Speech engine"))
         # While the model is still loading there is no engine object to ask,
         # but the menu must still show which one is coming — otherwise the
         # one moment you are most likely to open it is the one moment it
@@ -220,7 +265,8 @@ class MainWindow(QMainWindow):
                     lambda _checked, e=name: self._switch_engine(e))
 
         # ── Capture this session as test data ─────────────────────────
-        menu.addSection("Session")
+        menu.addSeparator()
+        menu.addAction(self._section(menu, "Session"))
         record = menu.addAction("Record this session")
         record.setCheckable(True)
         record.setChecked(self._record)
@@ -236,6 +282,26 @@ class MainWindow(QMainWindow):
         menu.exec(self.settings_btn.mapToGlobal(
             self.settings_btn.rect().topLeft()) - QPoint(0, menu.sizeHint().height())
         )
+
+    @staticmethod
+    def _section(menu: QMenu, title: str) -> QWidgetAction:
+        """A heading inside the popup.
+
+        QMenu.addSection() draws its text through the native style, and this
+        menu does not use the native style — the app's stylesheet replaces
+        QMenu wholesale, so every section came out as an unlabelled
+        separator and the three groups of settings ran together. A widget
+        action is drawn by the widget, so it survives.
+        """
+        label = QLabel(title, menu)
+        label.setStyleSheet(
+            f"color:{TEXT_MUTED}; font-size:11px; font-weight:600;"
+            f"letter-spacing:0.6px; padding:8px 14px 3px 14px;"
+        )
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(label)
+        action.setEnabled(False)
+        return action
 
     @staticmethod
     def _engine_unavailable(engine_cls) -> str:
@@ -260,27 +326,31 @@ class MainWindow(QMainWindow):
         return ""
 
     def _legend_action(self, menu: QMenu) -> QWidgetAction:
-        """What the four colours mean, said once.
+        """What the page is saying, said once.
 
-        Three colours now mean three different things — correct, wrong, and
-        *not sure*, the amber from the untrusted-region rule — plus the
-        basmala line, which is shown but never scored. Nothing told the
-        reciter any of that.
+        Plain ink leads, because it is what most of a page looks like and it
+        is the only entry that is not a colour. Correct recitation is no
+        longer marked — a word appearing at all is the app saying it heard
+        you say it, and saying nothing more is the point: what is coloured is
+        what wants looking at.
+
+        That does fold two states into one. A word confirmed correct and a
+        word the app heard but could not place both read as plain ink, and
+        the legend says so rather than pretending the distinction survived.
         """
         swatches = (
-            (CORRECT_COLOR, "correct"),
+            (TEXT_PRIMARY, "correct \u2014 or heard, but never placed"),
             (INCORRECT_COLOR, "wrong"),
             (MISSED_COLOR, "not sure \u2014 or skipped"),
-            (VERSE_REF_COLOR, "basmala \u2014 shown, never scored"),
         )
         holder = QWidget(menu)
         column = QVBoxLayout(holder)
         column.setContentsMargins(14, 6, 14, 8)
-        column.setSpacing(4)
+        column.setSpacing(5)
         for colour, meaning in swatches:
             line = QLabel(
                 f'<span style="color:{colour}; font-size:15px">\u25cf</span>'
-                f'&nbsp;&nbsp;<span style="color:#6B7280">{meaning}</span>'
+                f'&nbsp;&nbsp;<span style="color:{TEXT_SECONDARY}">{meaning}</span>'
             )
             column.addWidget(line)
         action = QWidgetAction(menu)
@@ -344,22 +414,39 @@ class MainWindow(QMainWindow):
             return
         if self._tracker.mode == "discovery":
             self._set_status("Searching\u2026", "transcribing")
-        else:
-            surah = self._tracker.last_surah
-            ayah = self._tracker.last_ayah
-            where = f" {surah}:{ayah}" if surah and ayah else ""
-            self._set_status(f"Following{where}", "recording")
+            return
+        surah = self._tracker.last_surah
+        ayah = self._tracker.last_ayah
+        if not surah or not ayah:
+            self._set_status("Following", "recording")
+            return
+        # The surah's name, not only its number: "An-Nisa 4:12" is a place,
+        # "4:12" is a coordinate you have to go and look up.
+        name = self._tracker.last_surah_name
+        where = f"{name} {surah}:{ayah}" if name else f"{surah}:{ayah}"
+        self._set_status(where, "recording")
+
+    # What each state colours the dot. The text carries the words; the dot is
+    # the part you take in without reading it.
+    _STATE_COLORS = {
+        "idle": TEXT_MUTED,
+        "recording": ACCENT,
+        "transcribing": TEXT_SECONDARY,
+        "error": RECORD_ERROR,
+    }
 
     def _set_status(self, text: str, state: str = "idle"):
-        self.status_label.setText(text)
+        self.status_label.set_message(text)
         self.status_label.setProperty("state", state)
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
+        self.status_dot.set_color(self._STATE_COLORS.get(state, TEXT_MUTED))
 
     def _set_btn_style(self, recording: bool):
-        self.listen_btn.setProperty("recording", "true" if recording else "false")
-        self.listen_btn.style().unpolish(self.listen_btn)
-        self.listen_btn.style().polish(self.listen_btn)
+        """The button paints itself from isChecked(); this only repaints it."""
+        self.listen_btn.setToolTip("Stop listening" if recording
+                                   else "Start listening")
+        self.listen_btn.update()
 
     # ── Quran index loading ────────────────────────────────────────────
 
@@ -435,14 +522,14 @@ class MainWindow(QMainWindow):
             return
 
         log.event("SESSION", f"listening started (device={device.description()})")
+        self._settle_timer.start()
         self._listening = True
-        self.listen_btn.setText("■")
         self._set_btn_style(True)
         self._set_status("Listening…", "recording")
 
     def _stop_listening(self):
         self._listening = False
-        self.listen_btn.setText("▶")
+        self._settle_timer.stop()
         self._set_btn_style(False)
 
         # Stop mic
@@ -482,13 +569,15 @@ class MainWindow(QMainWindow):
                 where = None
             if where is not None:
                 print(f"Session recording → {where}")
-                self._set_status(f"Recorded → {where.name}", "idle")
+                self._set_status(f"Recorded \u2192 {where.name}", "idle")
                 return
 
         if log.enabled:
             log.event("SESSION", "listening stopped")
             log.summary()
-            self._set_status(f"Ready — log: {log.path}", "idle")
+            # The name, not the path. The path is the tooltip — the bar is for
+            # glancing at, and a full path there is just a wide grey smear.
+            self._set_status(f"Ready \u00b7 {Path(log.path).name}", "idle")
             return
 
         self._set_status("Ready", "idle")

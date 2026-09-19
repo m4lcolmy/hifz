@@ -4,9 +4,28 @@ A desktop app for practising Quran memorisation. You recite from memory; it
 listens, finds your place in the Quran by itself, and shows you on a real
 Mushaf page which words you got right and which you did not.
 
-Words start hidden behind a white mask and are revealed as you recite them —
-green for correct, red for a mistake, amber for a word you skipped. So the
-page is a memory test, not something to read from.
+Words start hidden and are uncovered as you recite them. **Correct
+recitation is not marked.** A word you got right simply appears, in the
+Mushaf's own ink — because that is what a correctly recited page looks like,
+a page. Only the exceptions carry a colour: red for a word you got wrong,
+amber for one it could not vouch for or that you skipped. So the page is a
+memory test rather than something to read from, and the two words worth
+looking at are not buried inside a page-wide wash of the colour that means
+"fine".
+
+A word shown in plain ink can also be one the app heard but never managed to
+place — the run before it works out where you are. It says nothing about
+those words, and now it looks like it is saying nothing.
+
+What is never hidden is the page's furniture: the surah title in its banner,
+the ayah numbers — so you can see the shape of the page before you start —
+and the bismillah line, which belongs to no ayah and so can never be scored
+word by word.
+
+Say the wrong word and it is marked where you said it. That sounds obvious
+and is not: the word a reciter gets wrong is usually a word that occurs again
+a line or two down, and an aligner left to itself would rather jump to it
+than call it a mistake — taking your place on the page with it.
 
 Everything runs locally. No audio leaves the machine.
 
@@ -20,9 +39,13 @@ Everything runs locally. No audio leaves the machine.
 ./run.sh --engine ctc             # a second engine, once one is downloaded
 ```
 
-Press ▶, recite, press ■ when you are done.
+Press play, recite, press stop when you are done.
 
-The first few seconds show grey text while the app works out where you are.
+The first few seconds are spent working out where you are; the bar says
+`Searching…` while that is happening, and then names the place. The words you
+recited while it was searching are not lost — they are re-matched against the
+position once it is known, and whatever still cannot be placed is at least
+uncovered, so the ayah does not appear to begin halfway through.
 This is normal: an opening like `بسم الله الرحمن الرحيم` appears in many
 places, so the app waits for a phrase that identifies one spot before it
 commits. Once it locks on, it follows you word by word.
@@ -94,8 +117,37 @@ so for **more than a third of all words**.
 So verdicts are ranked by how good the evidence is, and the best evidence
 wins: a word heard whole outranks one heard at a window edge, and a word at a
 window edge can *confirm* correct recitation but never condemn it. A word may
-therefore go from red to green as a better look arrives. It never goes the
-other way on weaker evidence.
+therefore lose its red as a better look arrives. It never gains one on weaker
+evidence.
+
+### Why the red arrives a few seconds late
+
+A word recited at 70 wpm sits inside about twenty overlapping windows, and
+Whisper is roughly half right on any one of them. Several of those twenty
+come back wrong — and since a correct look permanently outranks a wrong one,
+the word went red and then, a second later, went back. Measured on
+`tests/records`: 16 words ended red, and **63 more had been red on the way
+and were retracted**, 24% of every word scored. A clean recitation of
+Al-Mutaffifin put 25 of its 69 words through red and finished with a clean
+page.
+
+None of that was visible in the numbers below, because they score the page as
+it is *left*. It was extremely visible to the reciter, for whom most of the
+page seemed to redden and then clear.
+
+So no colour goes on a word until the looks are finished. A word stays inside
+the sliding window for one window's length (`SETTLE_SECONDS`, 4 s) after it
+is recited; once nothing has mentioned it for that long, no further window
+ever will and the verdict is final. Until then the word is uncovered and left
+plain — not green, not amber: it has been heard and the app has not finished
+deciding, and saying nothing is the honest way to say that. Stopping settles
+everything at once, since the window that would have revised a verdict is
+never built.
+
+The cost is that a red appears about four seconds after the mistake, four or
+five words further on, and it then stays on the page. The final page is
+unchanged: the same 16 words red, the same 100% coverage, the same 2/2
+deliberate mistakes. Retracted reds went 24.0% → 0.4%.
 
 ### What is not treated as a mistake
 
@@ -143,11 +195,12 @@ the ground truth written in each filename. It also simulates the real-time
 drop behaviour, so its numbers reflect the live app rather than an idealised
 offline run.
 
-Three numbers, and they have to be read together:
+Four numbers, and they have to be read together:
 
 ```
 COVERAGE          154/181 = 85.1% of recited words given a verdict
 FALSE ALARM RATE  1/154 = 0.6%
+RETRACTED REDS    1/154 = 0.6% of words went red and came back
 DELIBERATE MISTAKES  2/2 caught
 ```
 
@@ -162,6 +215,15 @@ The **false alarm rate** is words you recited correctly that the app painted
 red. The two recordings with a deliberate mistake must keep catching it, so a
 change that "improves" the rate by quietly missing real mistakes cannot pass
 unnoticed.
+
+**Retracted reds** are words that were red at some point during the session
+and are not red at the end. The other three numbers all score the page as it
+is *left*, so this is the only one that can see anything the reciter watched
+happen and then unhappen. It was added because nothing else could: the page
+was reddening a quarter of every word scored and then clearing it, and every
+number here read clean throughout. Anything that waits longer before painting
+red drives this down and can only push coverage down with it — never the
+other way round, which is why the two are read together.
 
 Current: **100% coverage, 5.3% false alarms, 2/2 caught** over 12 recordings.
 
@@ -214,6 +276,72 @@ audio is not: these are somebody else's recordings, and a research corpus is
 not a licence to redistribute. The seed is committed, so the corpus is
 reproducible and a regression traces to a specific ayah rather than to luck.
 
+### Juz 30, as a session rather than as ayahs
+
+```bash
+python scripts/fetch_recitations.py --juz30 --plan
+python scripts/fetch_recitations.py --juz30 --agree
+python scripts/benchmark_recordings.py --from-recitations --juz30
+```
+
+Every corpus above samples *ayahs*, and nobody recites an ayah. They open a
+surah, say the basmala and go to the end. That shape is what the app has to
+survive — one cold start, one last word, and every ayah boundary in between
+— and a corpus of sampled ayahs measures the two hardest moments over and
+over and the ordinary twenty seconds between them not at all.
+
+So this one is whole surahs: Ad-Duhaa to An-Nas, all 22, one case each, a
+range rather than a selection so the app is not being shown the surahs it is
+good at. The fifteen before Ad-Duhaa are out on length alone — An-Naba is 40
+ayahs and An-Nazi'at 46, either one more audio than the whole tail.
+
+Only two of the five reciters have a basmala file at this source, so the
+corpus says which is which instead of pretending, and the split is the
+measurement:
+
+```
+surah-from-basmala     9 cases   97.7% coverage   0.8% false alarms
+surah-from-ayah-1     13 cases   98.4% coverage   0.7% false alarms
+                      22 found / 22            0.8% over 657 words scored
+```
+
+**The basmala costs nothing.** That was worth knowing: it is four words of
+audio before anything scorable and it is the one phrase discovery is
+guaranteed to refuse, and neither shows up in either column.
+
+**What it found instead.** Every failure in juz 30 is the same two defects,
+and both are visible in the two worst cases:
+
+| case | what happened |
+|---|---|
+| An-Nasr 110 | `إِذَا جَاءَ نَصْرُ` heard as `إِذَا جَاءَنَا`, which is unique — to **43:38**. Discovery took it, and tracking then held Az-Zukhruf for twelve windows while the transcription read `إِذَا جَاءَ نَصْرُ اللَّهِ`, a phrase that occurs in exactly one place and is not that one. 110:1 never scored. |
+| Al-Qari'ah 101 | `وَمَا أَدْرَاكَ` cut to `وَمَا أَدْرَى`, unique to **46:9**. Page 503 loaded, six words revealed under the wrong ayah. |
+
+A wrong lock is never reconsidered. Every escape hatch the tracker has counts
+*misses* — `TRACKING_MAX_MISSES`, `TRACKING_MAX_MISS_SECONDS` — and a
+confident wrong lock produces no misses at all: `إِذَا جَاءَ` really is inside
+43:38, so tracking succeeds every window and never doubts itself. Those two
+are the cases that lost words, so they are the two that were traced; a
+mis-lock recovered quickly leaves no mark on the summary table, so the real
+count is unknown and is at least two. See Tier K.
+
+Running the same corpus through the second engine says something neither
+corpus said before. CTC scores **0.3% false alarms against Whisper's 0.8%**
+at the same coverage and half the latency — on the twelve hand-made
+recordings it was *seven times worse*. Neither number is wrong; the corpus
+decides the answer. And the two engines fail in different places: of the nine
+cases with a problem, seven have it under only one engine, and CTC never
+mis-hears `إِذَا جَاءَ نَصْرُ`, so An-Nasr comes back 19/19. That is the case
+for running both and believing a red word only where they agree — measured,
+now, rather than proposed. It is still not a case for switching: this corpus
+has no mistakes in it, so it cannot say whether CTC still catches one.
+
+Three of the five words painted red are a fragment, not a mistake: `هُ`
+against `أَنزَلْنَاهُ`, `ضَرٌّ` against `ضَالًّا`. The other two are the surah's
+own refrain coming back in the wrong slot — `النَّاسِ` where
+`النَّفَّاثَاتِ` is due, `النَّارِ` for `النَّاسِ` — which is the model, not the
+matcher.
+
 ### Recording your own cases
 
 The easy way — every session becomes test data:
@@ -240,8 +368,31 @@ The audio recited before discovery works out where you are is kept as its own
 clip. That is where discovery struggles, and no hand-made recording contains
 it, because a person recording a test case starts cleanly.
 
-The manual way — record yourself, name the file after what you recited, and
-note any deliberate mistake:
+**A whole surah needs no label at all.** Drop it in
+`tests/records/surahs/` named after its surah and the benchmark works the
+rest out:
+
+```
+093 ad-duhaa.flac
+109 al-kafirun mistake 3:2.flac
+112.flac
+```
+
+A surah runs from ayah 1 to its last ayah and the app knows how many ayahs a
+surah has, so the number in the name is the entire ground truth. That closes
+the failure Tier D found — two of eleven hand-made recordings named ayahs
+their audio does not contain, because the range was typed from memory. The
+only thing still typed is `mistake <ayah>:<word>`, counting the word from 1,
+because no file can know what you meant to do. `partial` in the name says you
+stopped early, so coverage is not charged for what you never recited.
+
+They are scored beside the hand-made recordings and broken out as their own
+row, because they are the only audio here with a real microphone in it and
+averaging them into studio recitation hides exactly the gap they exist to
+measure. See `tests/records/surahs/README.md`.
+
+The older way, for a recording that is not a whole surah — name the file
+after what you recited and note any deliberate mistake:
 
 ```
 surah muddathir 8-10 no mistake.flac
@@ -308,9 +459,13 @@ data/
   quran.json                the text
   qcf_assets/               604 Mushaf pages + fonts
 logs/                       one log per run, newest 20 kept
+tests/
+  records/                  hand-made recordings, ground truth in the filename
+    surahs/                 a whole surah in your own voice — name it after the surah
+  recitations/              fetched corpora (audio gitignored, manifests committed)
 scripts/
-  benchmark_recordings.py   end-to-end benchmark (--from-session, --from-recitations)
-  recitation_corpus.py      which ayahs the fetched corpus holds, and why those
+  benchmark_recordings.py   end-to-end benchmark (--from-session, --from-recitations, --juz30)
+  recitation_corpus.py      which ayahs each fetched corpus holds, and why those
   fetch_recitations.py      downloads them (audio gitignored, manifest committed)
   test_search_algorithm.py  search engine evaluation
 ```

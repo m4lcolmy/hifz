@@ -15,7 +15,15 @@ the number that has to move), and **What the result changes**.
 |---|---|---|
 | **Coverage** | recited words given any verdict | up |
 | **False alarm rate** | correct words painted red | down |
+| **Retracted reds** | words red mid-session, not red at the end | down |
 | **Deliberate mistakes caught** | real errors still detected | must stay 2/2 |
+
+Retracted reds is the fourth, added after the reciter reported that "most of
+the words seem red but while reciting they're gone" and every number above
+read clean. The other three score the page as it is *left*; this is the only
+one that can see something the reciter watched happen and then unhappen. It
+measured 24.0% against a 6.1% false alarm rate — the page was retracting four
+times as many reds as it kept.
 
 **Report coverage first.** The false alarm rate is a fraction of the words the
 app *scored*, so a word never shown costs nothing and a change that shows
@@ -126,14 +134,57 @@ is always above 0.80 and the gate never fires. The measure needs replacing —
 likely entropy, or the margin between the top two symbols — before it is worth
 tuning. As written it is a knob connected to nothing.
 
+### The juz 30 corpus flips the bake-off, and that is the point
+
+Same engines, same matching, same scoring, a different corpus — whole short
+surahs instead of the twelve hand-made recordings:
+
+| | Whisper | CTC | |
+|---|---|---|---|
+| **Coverage** | **98.1%** | 97.8% | Whisper barely |
+| **False alarms** | 0.8% (5/657) | **0.3%** (2/658) | **CTC better** |
+| Latency per window | 97 ms | **54 ms** | CTC 1.8× faster |
+| Mistakes caught | — | — | **this corpus has none** |
+
+On the hand-made corpus CTC was **7× worse** on false alarms. Here it is
+**2.5× better**, at the same coverage. Neither number is wrong; they are
+measurements of different audio, and the reading is that the corpus decides
+the answer — which is the argument for getting a microphone into one.
+
+**Do not read 0.3% as "CTC is better".** This corpus contains no mistakes, so
+it cannot say whether CTC still catches one, and a corpus that only measures
+false alarms rewards an engine that says nothing. What makes it more than a
+draw is *where* each engine fails:
+
+| case | Whisper | CTC |
+|---|---|---|
+| An-Nasr 110 | **5 unscored** (locked onto 43:38) | 19/19, clean |
+| Al-Fil 105 | clean | **5 unscored, 1 red** |
+| An-Nas 114 | **2 red** (`النَّاسِ` confusions) | 3 unscored, 0 red |
+| Al-Falaq 113 | **1 red** | clean |
+| Al-Qari'ah 101 | 7 unscored | 7 unscored |
+
+Nine cases have a problem under one engine or the other and **seven of them
+have it under only one**. That is the precondition for Tier F's second
+proposal being worth anything: two engines that failed on the same cases
+could not help each other, and these do not. CTC even dissolves the wrong
+lock entirely — it never mis-hears `إِذَا جَاءَ نَصْرُ` as `إِذَا جَاءَنَا`, so
+discovery is never offered Az-Zukhruf in the first place, which is a second
+route at Tier K from the other end.
+
 ### What to do next with this
 
 1. **Replace the confidence measure**, then re-sweep. A gate that never fires
    cannot be said to have been tested.
-2. **Try CTC as a second opinion rather than a replacement.** It has *better*
-   coverage and is 2.5× faster; a word painted red only where both engines
-   agree would combine Whisper's precision with CTC's reach. Measure it as its
-   own change.
+2. **Try CTC as a second opinion rather than a replacement.** Now measured,
+   and promoted to the top of this list: seven of nine problem cases in juz
+   30 fail under exactly one engine. A word painted red only where both agree
+   would drop Whisper's `النَّاسِ` confusions and CTC's `الْفِيلِكِ`; a position
+   taken where either engine finds a *longer* unique n-gram would have saved
+   An-Nasr. Measure it as its own change, and on the hand-made corpus too —
+   the deliberate mistakes are the half of the question juz 30 cannot ask.
+   Cost is two engines resident at once; CTC is 54 ms a window against a
+   200 ms step, so there is room.
 3. **Do not adopt phoneme costs for CTC** until there is a deliberate mistake
    in the corpus that is *not* a ف/و confusion, or the gate cannot tell you
    anything.
@@ -646,3 +697,209 @@ than a mistake. Tallying the real sessions killed it: the surviving reds are
 words where the windows *agree* on the wrong reading — `فُصِّلَتْ` heard as
 `فُصِّدَتْ` by 7 windows of 11. Agreement would not have caught them, and the
 premise was wrong. Recorded here so it is not re-proposed.
+
+**Tier I — A wrong word is not a skip.** `difflib` will walk past any number
+of reference words to reach one that matches, because matching more is all it
+is trying to do. In the Quran, where a small vocabulary repeats, the word a
+reciter gets wrong is very often a word that occurs again a line or two down
+— so the aligner jumped to it rather than call it a mistake. 74:22 is
+`ثُمَّ عَبَسَ وَبَسَرَ` and 74:23 is `ثُمَّ أَدْبَرَ وَاسْتَكْبَرَ`; reciting
+"ثم عبس واستكبر" stepped over `وَبَسَرَ`, `ثُمَّ` and `أَدْبَرَ` to land on
+`وَاسْتَكْبَرَ`, which scored the one real mistake **correct**, invented three
+skipped words nobody had touched, and left the pointer an ayah ahead of the
+reciter — where nothing they said next could match, so the position was then
+lost as well. A skipped run of two or more is now believed only when
+`SKIP_RESUME_WORDS` reference words line up consecutively after it; a lone one
+is coincidence, and the heard word is charged against the word that was due.
+A run of one skipped word is always believed — dropping a word is the
+commonest thing a reciter does.
+*Measured: the benchmark does not move at all — coverage 100.0%, false alarms
+14/262 = 5.3%, mistakes 2/2, the same sixteen words flagged. On the twenty
+recorded sessions four change, all in the same direction: `172206` loses five
+phantom skips and gains seven correct words, `185444` loses one position and
+so one re-lock, `152312` moves one word from "not sure" to "wrong".*
+
+**Tier J — The page as a printed page.** Three display defects with one cause:
+nothing was measuring where the ink actually is.
+- *Highlights.* A QCF glyph's box is 85 units tall and the letters in it
+  occupy about 45, so every verdict was painted on a rectangle twice the
+  height of its word and sitting high of it. Outlining the glyph
+  (`QPainterPath.addText`) gives the real extent. Per-line extremes were tried
+  first and rejected: the tallest line measures 71 units against a line step
+  of 71, so neighbouring lines' highlights met. The median across the page,
+  clamped to leave a gap, is uniform and hugs the text.
+- *Surah names.* QBSML holds only the name, and at the page's point size it
+  measures 34 units against a body line of 85 — drawn as if it were a word it
+  came out as a small mark adrift on an empty line. It is a banner now, ruled
+  across the text column with the name set inside it. Drawn *above* the masks:
+  glyph boxes overlap the line above, so their masks cut a pale line across
+  the frame otherwise.
+- *The name in the bar.* `VerseMatch.surah_name` is the Arabic name, which is
+  right for a right-to-left page and wrong for a left-to-right status bar —
+  "المدثر 74:22" is reordered by the bidi algorithm into something that reads
+  as neither. `QuranIndex.surah_label()` gives the transliteration.
+
+---
+
+# Tier K — A wrong lock is never reconsidered
+
+*Found by the juz 30 corpus. Not started.*
+
+### Why
+
+The juz 30 corpus is whole short surahs — Ad-Duhaa to An-Nas, each recited
+from its basmala, which is the shape of a session rather than an ayah lifted
+out of the middle of one:
+
+```bash
+python scripts/fetch_recitations.py --juz30 --agree
+python scripts/benchmark_recordings.py --from-recitations --juz30
+```
+
+```
+surah-from-basmala     9 cases   97.7% coverage   0.8% false alarms
+surah-from-ayah-1     13 cases   98.4% coverage   0.7% false alarms
+22/22 located          657 words scored, 5 painted red
+```
+
+The basmala costs nothing — worth knowing, since it is four words of audio
+before anything scorable *and* the one phrase discovery is guaranteed to
+refuse, and it moves neither column.
+
+**The two worst cases are the same failure, and it is not on this roadmap.**
+
+| case | unscored | what happened |
+|---|---|---|
+| An-Nasr 110 | 5 of 19 | `إِذَا جَاءَ نَصْرُ` heard as `إِذَا جَاءَنَا` — unique, to **43:38**. |
+| Al-Qari'ah 101 | 7 of 36 | `وَمَا أَدْرَاكَ` cut to `وَمَا أَدْرَى` — unique, to **46:9**. |
+
+Discovery did nothing wrong: both phrases really do occur exactly once, and
+refusing to guess is the rule it is built on. What is wrong is what happens
+next. From `logs` of the 110 run:
+
+```
+7.086  ASR  "إِذَا جَاءَنَا"          discovery -> 43:38
+7.174  ASR  "إِذَا جَاءَ نَصْفِ"       tracking ctx=43:38:2 -> 43:38
+7.656  ASR  "إِذَا جَاءَ نَصْرُ اللَّهِ"  tracking ctx=43:38:3 -> 43:38
+...    twelve windows, then a re-lock at 110:2
+```
+
+By 7.656s the transcription is `إِذَا جَاءَ نَصْرُ اللَّهِ` — four words that
+occur in exactly one place in the Quran, and it is not Az-Zukhruf. The app
+held the wrong surah anyway, and showed the reciter page 503.
+
+**Every escape hatch the tracker has counts misses.** `TRACKING_MAX_MISSES`,
+`TRACKING_MAX_MISS_SECONDS`, `REDISCOVERY_MAX_GAP` — all of them fire when
+tracking *fails*. A confident wrong lock never fails: `إِذَا جَاءَ` genuinely
+is inside 43:38, so the local search succeeds every single window and the
+counter never moves. The one condition that cannot trigger re-discovery is
+being wrong and sure of it.
+
+### Work
+
+1. **Keep discovering while tracking.** `discover()` already runs on every
+   transcription in discovery mode and costs an n-gram lookup. Run it in
+   tracking mode too, and compare the two answers instead of ignoring one.
+2. **Overrule the pointer on better evidence, not on failure.** This is the
+   rule `recitation.py` already applies to words — best evidence wins, and a
+   verdict may be revised — applied to *position*. Take the discovered
+   position when it rests on a longer unique n-gram than the local match
+   used: 4 words unique to 110:1 beat 2 words found inside 43:38.
+3. **Do not let it cost a page turn per window.** The comparison must be
+   hysteretic: only switch when the discovered n-gram is strictly longer, and
+   only after it has said the same thing twice — the same `confirmations`
+   idea `STRICTNESS` already uses.
+4. **Re-place what was scored under the wrong pointer.** The pre-lock
+   machinery (`_fill_prelock`, `PRELOCK_BUFFER_SECONDS`) already re-matches
+   held transcriptions against a position once it is known. A corrected lock
+   is the same problem with a different trigger.
+
+### Gate
+
+```bash
+python scripts/benchmark_recordings.py --from-recitations --juz30
+python scripts/benchmark_recordings.py            # must not move
+```
+
+| Measure | Now | Target |
+|---|---|---|
+| Coverage, juz 30 | 98.1% | **≥ 99.5%** |
+| An-Nasr 110 unscored | 5 of 19 | **0** |
+| Al-Qari'ah 101 unscored | 7 of 36 | **0** |
+| False alarms, juz 30 | 0.8% | **no worse** |
+| Deliberate mistakes | 2/2 | **2/2** |
+| Wrong-surah page loads | **at least** 2 of 22 | **0** |
+
+"At least": only 110 and 101 were traced, because they are the two cases
+with unscored words. A mis-lock that is recovered quickly leaves no trace in
+the summary table at all, so the real count needs a run with `--debug-log`
+over all 22 before and after. Measure it first; a target of 0 against an
+unknown baseline is not a gate.
+
+A page turn per window is the way this fails. Count them: `log.mushaf` already
+records every page load, and a fix that trades two wrong locks for forty
+flickers is worse than the defect.
+
+### What the result changes
+
+- **If it works** → re-run the 275-case stratified corpus. The `neighbours`
+  stratum was built for exactly this class and samples one ayah at a time,
+  which cannot exhibit it: the failure is *choosing between two places while
+  tracking*, and a single-ayah case has nothing to choose.
+- **If page turns spike** → the hysteresis is the tier, not the comparison.
+- **If it changes nothing on the hand-made corpus** → expected. Those twelve
+  are recited in order from a clean start and never mis-lock.
+
+---
+
+# Tier L — A fragment is not a mistake
+
+*Found by the juz 30 corpus. Not started. Small.*
+
+### Why
+
+Three of the five words juz 30 painted red are not wrong words, they are
+truncated ones:
+
+| heard | reference | |
+|---|---|---|
+| `هُ` | `أَنزَلْنَاهُ` | 1 letter against 8 |
+| `ضَرٌّ` | `ضَالًّا` | 4 against 6 |
+| `الْخَنْرِ` | `الْخَنَّاسِ` | cut short |
+
+A window boundary cut the word in half. `EDGE_CONFIRMATIONS` exists for this
+and did not catch them, because it asks *where the word sat in the window*
+and these did not sit at the edge of the window the model was given — the
+model simply stopped early.
+
+**This is not a letter-class exemption and does not walk into Tier E's trap.**
+Tier E established that a forgiven letter class forgives the deliberate
+mistake with it, because `فَلَهُمْ`/`وَلَهُمْ` is the same edit as the
+commonest false alarm. Length is a different axis: both deliberate mistakes
+in the corpus are the same length as the word they replace —
+`فَلَهُمْ`/`وَلَهُمْ`, `وَأُنثَىٰ` recited as `و انثا` — so a rule that withholds
+a verdict when the heard token is a *fraction* of the reference cannot touch
+either one.
+
+### Work
+
+Withhold rather than forgive. A heard token below some fraction of the
+reference's length is not evidence of anything; it is the same "wait for a
+better window" the edge rule already does, triggered by a different symptom.
+It must stay a `_withhold`, not a pass — a genuinely dropped syllable is a
+real mistake and the reciter has to see it when no better window comes.
+
+### Gate
+
+Sweep the fraction. A threshold ships with measured numbers or it does not
+ship.
+
+| Measure | Now | Target |
+|---|---|---|
+| False alarms, juz 30 | 5/657 = 0.8% | **≤ 2/657** |
+| Coverage, juz 30 | 98.1% | **no worse** |
+| Deliberate mistakes | 2/2 | **2/2, or the rule is wrong** |
+
+If the mistakes stop being caught at any threshold that helps, the axis is
+not as independent as it looks and this goes in the Refuted list beside the
+phoneme costs.

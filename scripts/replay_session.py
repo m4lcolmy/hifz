@@ -44,15 +44,33 @@ class Board:
 
     def __init__(self):
         self.current_page_num = None
+        self.page_serial = 0
         self.final: dict[tuple[int, int, int], bool | None] = {}
         self.pages: list[int] = []
+        self.revealed: list[tuple[int, int, int]] = []
+        self.basmalas: list[int] = []
 
     def load_page(self, page_num: int):
         self.current_page_num = page_num
+        self.page_serial += 1
         self.pages.append(page_num)
 
     def update_recitation(self, surah, ayah, word_index, status):
         self.final[(surah, ayah, word_index)] = status
+
+    def reveal(self, surah: int, ayah: int, word_index: int) -> bool:
+        """Shown, with no verdict attached — and any verdict it was carrying
+        comes off the page with it, as the real view does."""
+        self.revealed.append((surah, ayah, word_index))
+        self.final.pop((surah, ayah, word_index), None)
+        return True
+
+    def paint_basmala(self, surah: int, status: bool = True) -> bool:
+        """The real view answers False where the page carries no bismillah
+        line for that surah; here every page is assumed to carry one, so
+        callers are exercised on the path that does something."""
+        self.basmalas.append(surah)
+        return True
 
 
 def read_transcriptions(path: Path) -> list[tuple[float, str]]:
@@ -118,14 +136,21 @@ def main():
         if decision.match is not None:
             hits += 1
 
-        before = len(board.final)
+        before = len(board.revealed) + len(board.final)
         tracker.on_result({
             "text": text,
             "match": decision.match,
             "mode": tracker.mode,
             "attempted": decision.attempted,
         })
-        if first_highlight_at is None and len(board.final) > before:
+        # The app's settle timer, on the same simulated clock. Without it a
+        # replay would hold verdicts the live session had already shown.
+        tracker.tick()
+        # Anything appearing on the page, not only a colour: a word is
+        # uncovered as soon as it is heard and coloured once its verdict can
+        # no longer change, so counting colours alone would now report the
+        # page as blank for the first several seconds of every session.
+        if first_highlight_at is None and len(board.revealed) + len(board.final) > before:
             first_highlight_at = timestamp
 
         if previous_mode == "discovery" and tracker.mode == "tracking":

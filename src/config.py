@@ -51,7 +51,7 @@ CHANNELS = 1
 #
 # 4000/200 is 42% more looks at every word (1134 windows against 801), and
 # more looks is the whole mechanism by which this app survives a bad
-# transcription: a word heard correctly in any one window stays green.
+# transcription: a word heard correctly in any one window stays unmarked.
 # Whole-file transcription of that recording matches only 50% of the
 # reference words, and the app still scores it at 10% false alarms.
 #
@@ -109,6 +109,25 @@ TRACKING_MIN_MATCHES = 1
 # Further away, one word is coincidence and following it derails the tracker.
 TRACKING_WEAK_EVIDENCE = 2     # matches at or below this count count as weak
 TRACKING_WEAK_MAX_DRIFT = 4    # words a weak match may sit from the pointer
+# How far past the last recognised word the pointer may follow an alignment.
+# A word the matcher could not recognise still gets paired with some reference
+# word, because the aligner always pairs what it is given — but which one it
+# landed on is arithmetic, not evidence. Following those pairings is how the
+# pointer runs ahead of the reciter, and a pointer ahead of the reciter can
+# match nothing he says until the miss timer gives up and re-discovers.
+#
+# Al-Fath 48:2 was being recited a second time. Three chunks running ended in
+# a mis-transcribed token — مَرٌّ, تَقَ, تَعْمَلُونَ — and each was charged
+# against whatever reference word the alignment reached: 48:2:11 -> 48:2:14 ->
+# 48:3:3 -> 48:4:4, two ayahs past a reciter who had not moved. Then twenty-two
+# transcriptions in a row matched nothing, the position was lost, and the page
+# jumped.
+#
+# Zero is too strict — it stalls the pointer on the ordinary run of bad
+# transcription and costs coverage. A small slack keeps up with recitation
+# while still refusing a seven-word leap.
+POINTER_SLACK = 2
+
 TRACKING_MAX_MISSES = 3      # consecutive failed matches before re-discovery
 # ...but only once this much time has also passed. Pausing between ayahs is
 # correct recitation, and during the pause the model emits breath fragments
@@ -121,10 +140,64 @@ TRACKING_MAX_MISS_SECONDS = 4.0
 # shown. Fill them in, up to this many words.
 REDISCOVERY_MAX_GAP = 40
 
+# ── Skipping, or getting a word wrong ─────────────────────────────────
+# The aligner is free to walk past reference words to reach a word that
+# matches. That is right when the reciter really did skip ahead, and wrong
+# when they simply said the wrong word and the word they said happens to
+# occur a little further on — which in a Quran is most wrong words.
+#
+# 74:22 is ثُمَّ عَبَسَ وَبَسَرَ and 74:23 is ثُمَّ أَدْبَرَ وَاسْتَكْبَرَ. Recite
+# "ثم عبس واستكبر" and the aligner steps over وَبَسَرَ, ثُمَّ and أَدْبَرَ to
+# land on وَاسْتَكْبَرَ in the next ayah: the one real mistake is reported as
+# correct, three untouched words are reported as skipped, and the pointer
+# ends up an ayah further on than the reciter, where nothing they say next
+# can match.
+#
+# So a skipped run must be paid for. This many reference words have to line
+# up *consecutively* after the skip before it is believed; a lone word is
+# coincidence, and the heard word is charged against the word that was
+# actually due instead. A run of one skipped word is always believed —
+# dropping a word is the commonest thing a reciter does and the alignment
+# barely moves.
+SKIP_RESUME_WORDS = 2
+
 # A word transcribed wrong at the edge of an audio window was probably cut in
 # half, so its verdict is withheld. Seen wrong at the edge of this many
 # different windows, it is treated as genuinely wrong.
 EDGE_CONFIRMATIONS = 2
+
+# ── Waiting for the looks that have not arrived yet ───────────────────
+# The whole mechanism of this app is that a word is seen by many windows and
+# the best look wins: at a 4000 ms window and a 200 ms step, a word recited
+# at 70 wpm sits inside about twenty of them. Whisper is roughly half right
+# on one look, so several of those twenty come back wrong — and since a
+# correct look permanently outranks a wrong one, the word goes red and then,
+# a second later, goes back.
+#
+# Measured on tests/records before this constant existed: 16 words ended red,
+# and 63 more had been red at some point and were retracted. 24% of every
+# word scored. Al-Mutaffifin — a clean recitation, a clean final page — put
+# 25 of its 69 words through red on the way. That is what "most of the words
+# seem red but while reciting they're gone" describes, and the benchmark
+# could not see any of it, because it scores the page as it is LEFT.
+#
+# So no colour goes on a word until the looks are finished. A word stays
+# inside the sliding window for exactly one window's length after it is
+# recited, so once nothing has mentioned it for that long, no further window
+# ever will and its verdict is final. Until then the word is *uncovered and
+# left plain* — not green, not amber: the app has heard it and has not
+# finished deciding, and saying nothing is the honest way to say that.
+#
+# The cost is that a red arrives about this many seconds after the mistake,
+# roughly four or five words further on. The word stays red on the page, so
+# nothing is lost but immediacy — and immediacy was what was wrong.
+SETTLE_SECONDS = WINDOW_MS / 1000.0
+
+# How often the app asks whether anything has settled while no window is
+# arriving — i.e. while the reciter is pausing. It only bounds how late a
+# colour can be beyond SETTLE_SECONDS, so it is a fraction of it rather than
+# a number in its own right.
+SETTLE_TICK_MS = 400
 
 # ── Before the lock ───────────────────────────────────────────────────
 # Discovery refuses ambiguous openings, so the first seconds of a session are
@@ -140,6 +213,17 @@ PRELOCK_LOOKBACK_WORDS = 25     # reference words before the lock to search
 # transcription lines up, or when at least this many words do. Discovery has
 # already refused these chunks, so there is no pointer vouching for them.
 PRELOCK_MIN_MATCHES = 2
+
+# Re-matching recovers a verdict only where the transcription can be lined up
+# with the reference. Where it cannot, the words are still gone from the page:
+# discovery needs several words to say where the reciter is, so the run it
+# spent getting there is exactly the run that never appears, and every session
+# opens with its first phrase missing. Those words are *revealed* — shown in
+# black, never coloured — back to the start of the ayah the lock landed in,
+# because the app knows they were recited and does not know whether they were
+# right. Capped, so locking deep into an 88-word ayah does not uncover the
+# whole thing.
+PRELOCK_REVEAL_WORDS = 12
 
 # ── One-word ayahs ────────────────────────────────────────────────────
 # الٓمٓ, كٓهيعٓصٓ, طه, يس, وَالْعَصْرِ — an ayah can be a single word, and the

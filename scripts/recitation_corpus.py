@@ -306,12 +306,20 @@ class Case:
         a run, or an opening with its basmala — is written as FLAC, because
         gluing mp3 frames together is not decoding them and the seams show up
         as clicks the VAD then treats as speech.
+
+        The basmala is named in the file rather than implied by the ayah
+        span, because a whole surah and a run over the same ayahs differ in
+        nothing else: `109_001-006.flac` and `109_001-006_basmala.flac` are
+        the same six ayahs with and without four words in front of them, and
+        the four words are the whole point of one of them.
         """
         stem = f"{self.reciter}/{self.surah:03d}_{self.first_ayah:03d}"
         if self.is_run:
-            return f"{stem}-{self.last_ayah:03d}.flac"
-        if len(self.parts) > 1:
+            stem = f"{stem}-{self.last_ayah:03d}"
+        if 0 in self.parts:
             return f"{stem}_basmala.flac"
+        if self.is_run:
+            return f"{stem}.flac"
         return f"{stem}.mp3"
 
 
@@ -473,6 +481,144 @@ def build_corpus(seed: int = SEED,
     return strata
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Juz 30, recited the way a reciter recites it
+# ═══════════════════════════════════════════════════════════════════════
+
+#: The short-surah tail: Ad-Duhaa through An-Nas. A range, not a hand-picked
+#: list, so nobody can be accused of choosing the surahs the app happens to
+#: be good at — every surah in it is in, and the boundary is a fact about
+#: length rather than a judgement about difficulty.
+JUZ30_WHOLE_SURAH_FROM = 93
+JUZ30_WHOLE_SURAH_TO = 114
+
+#: Where the juz 30 corpus definition lives. Its own manifest, beside the
+#: stratified one; see `build_juz30_corpus` for why it is not a stratum of it.
+JUZ30_MANIFEST_PATH = RECITATIONS_DIR / "juz30.json"
+
+#: The reciters this source serves a separate basmala file for, across the
+#: whole of the short-surah tail. Checked, not assumed: `<surah>000.mp3` was
+#: requested for all 22 surahs from all five reciters, and the answer is a
+#: clean split — these two have every one, the other three have none at all.
+#:
+#: It is a fact about the source rather than about the Quran, which is why it
+#: is a constant with its evidence written next to it rather than something
+#: the fetcher discovers and quietly works around. The old behaviour — ask
+#: for part 0, shrug when it 404s — meant thirteen of these cases carried a
+#: manifest entry and a filename that both said `basmala` about audio that
+#: has none, which is precisely the class of wrong label this whole corpus
+#: exists to rule out.
+BASMALA_RECITERS = frozenset({
+    "Alafasy_64kbps",
+    "Abdurrahmaan_As-Sudais_192kbps",
+})
+
+
+def build_juz30_corpus(seed: int = SEED,
+                       reciters: tuple[Reciter, ...] = RECITERS,
+                       ayahs: list[Ayah] | None = None) -> list[Stratum]:
+    """Whole short surahs, one case per surah, split by where they start.
+
+    **The unit here is the surah, because that is the unit a person revises.**
+    Every other corpus in this project samples ayahs: a single ayah lifted
+    out of Al-Buruj, a run of four from the middle of a surah. Nobody recites
+    that. They open a surah, say the basmala, and go to the end — and that
+    whole shape is what the app has to survive: a cold start with no
+    position, a basmala that discovery refuses because it matches 114 places,
+    then ayah after ayah with the tracker holding on across every boundary,
+    to a final word whose evidence is thinner than any other word's because
+    no later window will ever cover it.
+
+    Sampled ayahs never produce that shape. Each one is its own cold start
+    and its own last word, so the corpus measures the two hardest moments of
+    a session over and over and the twenty ordinary seconds between them not
+    at all.
+
+    **Ad-Duhaa to An-Nas, all twenty-two of them.** A range rather than a
+    selection: the app is not being shown the surahs it is good at. The
+    fifteen before Ad-Duhaa are left out on length alone — An-Naba is 40
+    ayahs and An-Nazi'at 46, and either one costs more audio than the entire
+    tail. The tail is also simply where revision happens; it is the part of
+    the Quran most people can recite end to end from memory.
+
+    **Two strata, because the source forced a choice and the choice is worth
+    measuring.** Only two of the five reciters have a basmala file at all
+    (see `BASMALA_RECITERS`). Dropping the other three would cost the slow
+    and very slow end of the pace range, which is where a 4-second window has
+    the least to work with. Keeping them and pretending they open with a
+    basmala would be a wrong label. So they are kept and labelled:
+
+      - `surah-from-basmala` — the real thing, cold start included.
+      - `surah-from-ayah-1` — the same surah beginning at its first word.
+
+    Which makes the split useful rather than merely honest: the per-stratum
+    table now answers "what do those four words cost, or buy?" — and the
+    answer is not obvious in either direction. They are four words of audio
+    before anything scorable, and they are also the phrase discovery is
+    guaranteed to refuse.
+
+    **What it can measure.** These are correct recitations, so coverage and
+    false alarms and nothing else — `DELIBERATE MISTAKES` still comes only
+    from a human reciting one wrong on purpose. What it adds over the
+    stratified corpus is not a new metric but a realistic *session*.
+
+    One thing it still is not: the isti'adha. A reciter says
+    `أَعُوذُ بِاللَّهِ مِنَ الشَّيْطَانِ الرَّجِيمِ` before the basmala and this source
+    serves no file for it, so the only case in the project that contains one
+    is the hand-made `surah qafirun with auzu basmala`.
+    """
+    ayahs = ayahs if ayahs is not None else load_ayahs()
+    by_surah: dict[int, list[Ayah]] = {}
+    for a in ayahs:
+        by_surah.setdefault(a.surah, []).append(a)
+
+    with_basmala = Stratum(
+        "surah-from-basmala", 0,
+        "a session as it is actually opened: cold, and on the one phrase "
+        "discovery is guaranteed to refuse",
+    )
+    from_ayah_1 = Stratum(
+        "surah-from-ayah-1", 0,
+        "the same whole surah begun at its first word — the three slowest "
+        "voices, whose source has no basmala file",
+    )
+
+    rng = random.Random(seed)
+    order = list(reciters)
+    rng.shuffle(order)
+
+    for i, surah in enumerate(range(JUZ30_WHOLE_SURAH_FROM,
+                                    JUZ30_WHOLE_SURAH_TO + 1)):
+        verses = sorted(by_surah[surah], key=lambda a: a.ayah)
+        last = verses[-1].ayah
+        # Round-robin rather than random: twenty-two cases split five ways is
+        # thin enough that an unlucky draw could leave a voice with two, and
+        # a per-reciter row computed from two cases says nothing about the
+        # voice.
+        reciter = order[i % len(order)]
+        basmala = reciter.id in BASMALA_RECITERS
+        stratum = with_basmala if basmala else from_ayah_1
+        stratum.cases.append(Case(
+            stratum=stratum.name,
+            reciter=reciter.id,
+            surah=surah, first_ayah=1, last_ayah=last,
+            # 0 is the basmala, and it is never scored either way: the app
+            # paints the bismillah line on the reciter's word and compares
+            # nothing. It is in the audio to be *heard past*, not to be
+            # marked.
+            parts=((0, *range(1, last + 1)) if basmala
+                   else tuple(range(1, last + 1))),
+            words=sum(a.words for a in verses),
+            note=("whole surah, basmala first" if basmala
+                  else "whole surah, from ayah 1 — this reciter has no "
+                       "basmala file at the source"),
+        ))
+
+    for stratum in (with_basmala, from_ayah_1):
+        stratum.target = len(stratum.cases)
+    return [with_basmala, from_ayah_1]
+
+
 def all_cases(strata: list[Stratum]) -> list[Case]:
     return [c for s in strata for c in s.cases]
 
@@ -482,8 +628,15 @@ def all_cases(strata: list[Stratum]) -> list[Case]:
 # ═══════════════════════════════════════════════════════════════════════
 
 def build_manifest(seed: int = SEED,
-                   reciters: tuple[Reciter, ...] = RECITERS) -> dict:
-    strata = build_corpus(seed, reciters)
+                   reciters: tuple[Reciter, ...] = RECITERS,
+                   strata: list[Stratum] | None = None) -> dict:
+    """The version-controlled half of a corpus — whichever corpus it is.
+
+    `strata` is passed in by the juz 30 corpus, which is a different set of
+    cases written in the same format and read by the same benchmark. One
+    writer, so the two manifests cannot drift into two shapes.
+    """
+    strata = strata if strata is not None else build_corpus(seed, reciters)
     return {
         "version": MANIFEST_VERSION,
         "seed": seed,
@@ -509,6 +662,11 @@ def build_manifest(seed: int = SEED,
             for c in all_cases(strata)
         ],
     }
+
+
+def build_juz30_manifest(seed: int = SEED,
+                         reciters: tuple[Reciter, ...] = RECITERS) -> dict:
+    return build_manifest(seed, reciters, build_juz30_corpus(seed, reciters))
 
 
 def write_manifest(manifest: dict, path: Path = MANIFEST_PATH) -> Path:

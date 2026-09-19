@@ -2,11 +2,15 @@ import unittest
 
 from src.config import (
     TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
-    PRELOCK_BUFFER_SECONDS, STRICTNESS, STRICTNESS_LEVELS,
+    PRELOCK_BUFFER_SECONDS, PRELOCK_REVEAL_WORDS, STRICTNESS,
+    STRICTNESS_LEVELS, SETTLE_SECONDS,
 )
 from src.core.quran import QuranIndex, VerseMatch, WordResult, BASMALA_TEXT
 from src.core.page_map import PageMap
 from src.ui.recitation import RecitationTracker
+
+
+_UNMARKED = object()   # the page showing the word with no colour on it
 
 
 class FakeClock:
@@ -22,24 +26,84 @@ class FakeClock:
         return self.now
 
 
+def settle(tracker):
+    """Let the audio windows that could still revise these verdicts go by.
+
+    No colour goes on a word until nothing has mentioned it for
+    SETTLE_SECONDS: a word recited at 70 wpm sits inside about twenty
+    windows, several of them come back wrong, and a correct look
+    permanently outranks a wrong one — so a verdict shown before the last
+    window has been is a verdict that may be about to change. That is what
+    made the page redden words it then retracted.
+
+    A test asserting a colour is asserting what the page shows once the
+    reciter has moved past the word, so it has to let them move past it.
+    Back-dating is how, rather than advancing a clock: it says "these words
+    are out of the windows now" without assuming which clock the tracker was
+    built with, and it leaves a later window free to reopen them — which is
+    exactly what happens when a reciter goes back over a line.
+    """
+    tracker._seen_at = {w: t - SETTLE_SECONDS
+                        for w, t in tracker._seen_at.items()}
+    tracker.tick()
+
+
+def revealed_unscored(mushaf, tracker) -> list:
+    """Reveals of words that never got a verdict at all.
+
+    `reveal()` has two callers now. One is the run before the lock, which is
+    what these tests are about: words known to have been recited and never
+    placed. The other is a word waiting for its verdict, uncovered and left
+    plain while the windows that will judge it arrive — and that word is in
+    `_scored`, so it filters out here.
+    """
+    return [w for w in mushaf.revealed if w not in tracker._scored]
+
+
 class DummyMushafView:
     def __init__(self):
         self.current_page_num = 1
+        self.page_serial = 0
         self.loaded_pages = []
         self.updates = []
+        self.revealed: list[tuple[int, int, int]] = []
+        self.basmalas: list[int] = []
 
     def load_page(self, page_num: int):
         self.current_page_num = page_num
         self.loaded_pages.append(page_num)
+        self.page_serial += 1
 
     def update_recitation(self, surah: int, ayah: int, word_index: int, status):
         self.updates.append((surah, ayah, word_index, status))
 
+    def reveal(self, surah: int, ayah: int, word_index: int) -> bool:
+        """Shown, with no verdict attached — and any verdict it was
+        carrying is taken off the page with it, as the real view does."""
+        self.revealed.append((surah, ayah, word_index))
+        self.updates.append((surah, ayah, word_index, _UNMARKED))
+        return True
+
+    def paint_basmala(self, surah: int, status: bool = True) -> bool:
+        """The real view answers False where the page carries no bismillah
+        line for that surah; here every page is assumed to carry one, so
+        callers are exercised on the path that does something."""
+        self.basmalas.append(surah)
+        return True
+
     def final(self) -> dict:
-        """Last colour written per word — what the reciter actually sees."""
+        """Last colour written per word — what the reciter actually sees.
+
+        A word left plain and unjudged is absent, not None: None is amber on
+        the page, and "the app could not read this" is a different thing to
+        show than "the app has not finished looking".
+        """
         out = {}
         for surah, ayah, word_index, status in self.updates:
-            out[(surah, ayah, word_index)] = status
+            if status is _UNMARKED:
+                out.pop((surah, ayah, word_index), None)
+            else:
+                out[(surah, ayah, word_index)] = status
         return out
 
 
@@ -153,11 +217,16 @@ class RecitationTrackerTests(unittest.TestCase):
         match = self.index.track(text, 1, 2, 0)
         self.assertIsNotNone(match)
         tracker.on_result({"text": text, "match": match, "mode": "tracking"})
+        settle(tracker)
 
         # 1:2 and 1:3 were skipped → missed (None).
         # 1:5 was recited → scored as a bool, never None.
-        skipped = [s for su, a, _, s in mushaf.updates if (su, a) in {(1, 2), (1, 3), (1, 4)}]
-        recited = [s for su, a, _, s in mushaf.updates if (su, a) == (1, 5)]
+        # The final colour, not every write: a word is uncovered and left
+        # plain first and coloured once its verdict is settled, so the
+        # writes on the way there are not what the reciter is left looking at.
+        final = mushaf.final()
+        skipped = [s for (su, a, _), s in final.items() if (su, a) in {(1, 2), (1, 3), (1, 4)}]
+        recited = [s for (su, a, _), s in final.items() if (su, a) == (1, 5)]
 
         self.assertTrue(skipped)
         self.assertTrue(all(s is None for s in skipped))
@@ -198,6 +267,7 @@ class EvidenceScoringTests(unittest.TestCase):
                 self._word(8, 3, 2, "الصَّ", "الصَّلَاةَ", False),
                 self._word(8, 3, 3, "وَمِمَّا", "وَمِمَّا", True),
             ])})
+        settle(tracker)
         self.assertEqual(mushaf.final()[(8, 3, 2)], False)
 
         # Later window hears the whole word
@@ -207,6 +277,7 @@ class EvidenceScoringTests(unittest.TestCase):
                 self._word(8, 3, 2, "الصَّلَاةَ", "الصَّلَاةَ", True),
                 self._word(8, 3, 3, "وَمِمَّا", "وَمِمَّا", True),
             ])})
+        settle(tracker)
         self.assertEqual(mushaf.final()[(8, 3, 2)], True)
 
     def test_correct_is_never_downgraded_by_a_fragment(self):
@@ -220,6 +291,7 @@ class EvidenceScoringTests(unittest.TestCase):
                 self._word(8, 3, 3, "وَمِمَّا", "وَمِمَّا", True)]
         tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
                            "match": self._match(good)})
+        settle(tracker)
         self.assertEqual(mushaf.final()[(8, 3, 2)], True)
 
         bad = [self._word(8, 3, 0, "يُقِيمُونَ", "يُقِيمُونَ", True),
@@ -227,6 +299,7 @@ class EvidenceScoringTests(unittest.TestCase):
                self._word(8, 3, 3, "وَمِمَّا", "وَمِمَّا", True)]
         tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
                            "match": self._match(bad)})
+        settle(tracker)
         self.assertEqual(mushaf.final()[(8, 3, 2)], True)
 
     def test_wrong_word_at_window_edge_is_withheld(self):
@@ -241,6 +314,7 @@ class EvidenceScoringTests(unittest.TestCase):
                 self._word(8, 3, 2, "الصَّلَاةَ", "الصَّلَاةَ", True),
                 self._word(8, 3, 3, "فَمِمَّا", "وَمِمَّا", False),        # edge
             ])})
+        settle(tracker)
         final = mushaf.final()
         self.assertNotIn((8, 3, 0), final)   # withheld, not painted red
         self.assertNotIn((8, 3, 3), final)
@@ -267,6 +341,7 @@ class EvidenceScoringTests(unittest.TestCase):
                     self._word(8, 3, 3, "وَمِمَّ", "وَمِمَّا", False),      # edge
                 ])})
 
+        settle(tracker)
         final = mushaf.final()
         self.assertIs(final[(8, 3, 0)], True)
         self.assertIs(final[(8, 3, 3)], True)
@@ -287,6 +362,7 @@ class EvidenceScoringTests(unittest.TestCase):
                 self._word(8, 3, 3, "وَمِمَّ", "وَمِمَّا", False),        # edge
                 self._word(8, 3, 4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
             ])})
+        settle(tracker)
         self.assertIs(mushaf.final()[(8, 3, 3)], True)
 
         tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
@@ -295,6 +371,7 @@ class EvidenceScoringTests(unittest.TestCase):
                 self._word(8, 3, 3, "فَمِمَّا", "وَمِمَّا", False),        # heard whole
                 self._word(8, 3, 4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
             ])})
+        settle(tracker)
         self.assertIs(
             mushaf.final()[(8, 3, 3)], False,
             "a guess about clipped audio outranked a word heard whole",
@@ -391,6 +468,7 @@ class AlFatihaSessionTests(unittest.TestCase):
                                     ayah_id=7, start_offset=0, words=words),
             })
 
+        settle(tracker)
         self.assertIs(
             mushaf.final()[(1, 7, 8)], True,
             "a word with no evidence overwrote one that was actually heard",
@@ -422,6 +500,7 @@ class AlFatihaSessionTests(unittest.TestCase):
                                     ayah_id=7, start_offset=0, words=words),
             })
 
+        settle(tracker)
         self.assertIs(mushaf.final()[(1, 7, 5)], True)
 
     def test_ayah_recited_while_position_was_lost_is_still_shown(self):
@@ -555,6 +634,7 @@ class BeforeTheLockTests(unittest.TestCase):
 
         self._recite(tracker, "الم", "ذلك الكتاب لا ريب فيه")
 
+        settle(tracker)
         final = mushaf.final()
         self.assertEqual(tracker.last_surah, 2)
         self.assertIs(final.get((2, 1, 0)), True,
@@ -643,9 +723,18 @@ class UntrustedRegionTests(unittest.TestCase):
                           reference_index=idx)
 
     def _feed(self, tracker, words):
+        """One window arrives, and the reciter carries on past these words.
+
+        The settle belongs to the fixture, not to each test: the neighbour
+        rule is about *which* verdicts may be shown, settling is about
+        *when* there is nothing left to change them. Without it every test
+        here would be asserting the same thing — that a word still inside
+        the windows has no colour yet — instead of the rule it names.
+        """
         tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
             "match": VerseMatch(surah_id=8, surah_name="Al-Anfal", ayah_id=3,
                                 start_offset=0, words=words)})
+        settle(tracker)
 
     def test_a_wrong_word_with_no_confident_neighbour_is_not_condemned(self):
         """Surrounded by words we also mis-heard, a wrong verdict is far more
@@ -748,6 +837,177 @@ class BasmalaTests(unittest.TestCase):
         self.assertNotIn(BASMALA_TEXT, html)
 
 
+class RevealedBeforeTheLockTests(unittest.TestCase):
+    """What is left when re-matching cannot place the opening words.
+
+    _fill_prelock recovers a verdict wherever the held transcriptions line up
+    against the reference. Where they do not, the words stayed masked and the
+    reciter watched the Mushaf begin filling in from the middle of the ayah
+    they had started — the opening of every session, missing.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+        cls.page_map = PageMap()
+
+    def _tracker(self, mushaf, clock=None):
+        return RecitationTracker(mushaf, self.page_map, self.index,
+                                 clock=clock or FakeClock())
+
+    @staticmethod
+    def _match(surah, ayah, first_index, words):
+        """A lock landing `first_index` words into an ayah."""
+        return VerseMatch(
+            surah_id=surah, surah_name="S", ayah_id=ayah,
+            start_offset=first_index,
+            words=[WordResult(recited=w, reference=w, is_correct=True,
+                              surah_id=surah, ayah_id=ayah,
+                              reference_index=first_index + n)
+                   for n, w in enumerate(words)],
+        )
+
+    def test_the_words_before_the_lock_are_shown(self):
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+        tracker.on_result({"text": "x", "mode": "discovery", "attempted": True,
+                           "match": self._match(4, 12, 3, ["تَرَكَ"])})
+        self.assertEqual(revealed_unscored(mushaf, tracker),
+                         [(4, 12, 0), (4, 12, 1), (4, 12, 2)],
+                         "the head of the ayah the lock landed in stayed blank")
+
+    def test_they_are_shown_without_a_verdict(self):
+        """Green would claim a judgement never reached; amber would call
+        correct recitation a mistake. Neither is known."""
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+        tracker.on_result({"text": "x", "mode": "discovery", "attempted": True,
+                           "match": self._match(4, 12, 2, ["تَرَكَ"])})
+        settle(tracker)
+        coloured = set(mushaf.final())
+        self.assertNotIn((4, 12, 0), coloured)
+        self.assertNotIn((4, 12, 1), coloured)
+
+    def test_a_lock_at_the_start_of_an_ayah_reveals_nothing(self):
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+        tracker.on_result({"text": "x", "mode": "discovery", "attempted": True,
+                           "match": self._match(4, 12, 0, ["وَلَكُمْ"])})
+        self.assertEqual(revealed_unscored(mushaf, tracker), [])
+
+    def test_a_word_already_scored_is_not_revealed_instead(self):
+        """_fill_prelock got there first; a verdict outranks a bare reveal."""
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+        tracker._absorb(self._match(4, 12, 0, ["وَلَكُمْ", "نِصْفُ"]))
+        tracker._reveal_head(self._match(4, 12, 3, ["تَرَكَ"]))
+        self.assertEqual(revealed_unscored(mushaf, tracker), [(4, 12, 2)])
+
+    def test_the_run_revealed_is_capped(self):
+        """Locking 40 words into an 88-word ayah must not uncover the ayah."""
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+        tracker.on_result({"text": "x", "mode": "discovery", "attempted": True,
+                           "match": self._match(4, 12, 40, ["تَرَكَ"])})
+        self.assertEqual(len(revealed_unscored(mushaf, tracker)),
+                         PRELOCK_REVEAL_WORDS)
+
+
+class BasmalaOnThePageTests(unittest.TestCase):
+    """The line every surah but At-Tawbah opens with, and no ayah owns.
+
+    Being part of no ayah, nothing was ever going to colour it word by word,
+    so it sat in black ink while the rest of the page filled in — which reads
+    as the app having missed the first thing recited. It is painted on the
+    reciter's word instead: four short words, recited immediately before the
+    surah they belong to.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+        cls.page_map = PageMap()
+
+    def _run(self, mushaf, clock, *chunks):
+        tracker = RecitationTracker(mushaf, self.page_map, self.index,
+                                    clock=clock)
+        for text in chunks:
+            ctx = (tracker.last_surah, tracker.last_ayah, tracker.last_word_index)
+            match = (self.index.track(text, *ctx) if tracker.mode == "tracking"
+                     else self.index.discover(text))
+            tracker.on_result({"text": text, "match": match,
+                               "mode": tracker.mode, "attempted": True})
+        return tracker
+
+    def test_reciting_it_paints_the_surah_it_opens(self):
+        mushaf, clock = DummyMushafView(), FakeClock()
+        self._run(mushaf, clock,
+                  "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
+                  "قُلْ هُوَ اللَّهُ أَحَدٌ")
+        self.assertIn(112, mushaf.basmalas)
+
+    def test_it_is_not_claimed_from_the_middle_of_a_surah(self):
+        """Landing at 15:72 says nothing about how Al-Hijr was opened."""
+        mushaf, clock = DummyMushafView(), FakeClock()
+        self._run(mushaf, clock,
+                  "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
+                  "لَعَمْرُكَ إِنَّهُمْ لَفِي سَكْرَتِهِمْ")
+        self.assertEqual(mushaf.basmalas, [])
+
+    def test_one_basmala_does_not_credit_every_later_surah(self):
+        """Heard once at the start of a session, it used to be true forever."""
+        mushaf, clock = DummyMushafView(), FakeClock()
+        tracker = self._run(mushaf, clock, "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ")
+        clock.advance(PRELOCK_BUFFER_SECONDS + 1)
+        tracker.on_result({"text": "قُلْ هُوَ اللَّهُ أَحَدٌ",
+                           "match": self.index.discover("قُلْ هُوَ اللَّهُ أَحَدٌ"),
+                           "mode": tracker.mode, "attempted": True})
+        self.assertEqual(mushaf.basmalas, [])
+
+    def test_a_surah_reached_without_one_is_not_painted(self):
+        mushaf, clock = DummyMushafView(), FakeClock()
+        self._run(mushaf, clock, "قُلْ هُوَ اللَّهُ أَحَدٌ")
+        self.assertEqual(mushaf.basmalas, [])
+
+
+class PageTurnTests(unittest.TestCase):
+    """load_page() rebuilds the scene, so every hitbox is a new object."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+        cls.page_map = PageMap()
+
+    def test_a_page_turn_repaints_what_the_new_page_shows(self):
+        """The tracker cached the colour it had pushed for each word and
+        skipped anything unchanged. A page turn changes no colour and
+        destroys every hitbox, so the page turned to stayed blank."""
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map, self.index,
+                                    clock=FakeClock())
+        word = WordResult(recited="تَرَكَ", reference="تَرَكَ", is_correct=True,
+                          surah_id=4, ayah_id=12, reference_index=3)
+        match = VerseMatch(surah_id=4, surah_name="S", ayah_id=12,
+                           start_offset=3, words=[word])
+        tracker._absorb(match)
+        before = len(mushaf.updates)
+
+        mushaf.load_page(mushaf.current_page_num + 1)
+        tracker._repaint()
+        self.assertGreater(len(mushaf.updates), before,
+                           "nothing was pushed to the page that was turned to")
+
+    def test_the_bismillah_tint_survives_a_page_turn(self):
+        """It is a decision about the session, not a colour on one page."""
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map, self.index,
+                                    clock=FakeClock())
+        tracker._basmala_surahs.add(112)
+        mushaf.load_page(604)
+        tracker._repaint()
+        self.assertIn(112, mushaf.basmalas)
+
+
 class AyahBoundaryTests(unittest.TestCase):
     """Two words either side of a boundary are neighbours by accident."""
 
@@ -776,6 +1036,151 @@ class AyahBoundaryTests(unittest.TestCase):
         self.assertEqual(match.surah_id, 1)
 
 
+class SettlingTests(unittest.TestCase):
+    """No colour goes on a word while a later window can still change it.
+
+    The app's whole mechanism is that a word is seen by ~20 windows and the
+    best look wins. Whisper is about half right on one look, so several of
+    those twenty come back wrong — and because a correct look permanently
+    outranks a wrong one, a verdict shown early is a verdict that may be
+    about to be withdrawn. Measured on tests/records before this rule: 16
+    words ended red and 63 more had been red on the way, 24% of every word
+    scored. A page that reddens words it then retracts is a page you learn
+    to read past.
+
+    So a word is uncovered as soon as it is heard — that is the feedback
+    that matters while reciting — and coloured only once the windows are
+    done with it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page_map = PageMap()
+
+    def _word(self, idx, recited, reference, correct):
+        return WordResult(recited=recited, reference=reference,
+                          is_correct=correct, surah_id=8, ayah_id=3,
+                          reference_index=idx)
+
+    def _tracker(self, level="strict"):
+        mushaf = DummyMushafView()
+        clock = FakeClock()
+        tracker = RecitationTracker(mushaf, self.page_map, clock=clock,
+                                    strictness=level)
+        tracker.set_position(8, 3, 0)
+        return mushaf, tracker, clock
+
+    def _mistake(self):
+        return [self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+                self._word(3, "فَمِمَّا", "وَمِمَّا", False),
+                self._word(4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True)]
+
+    def _correct(self):
+        return [self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+                self._word(3, "وَمِمَّا", "وَمِمَّا", True),
+                self._word(4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True)]
+
+    def _feed(self, tracker, words):
+        tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
+            "match": VerseMatch(surah_id=8, surah_name="Al-Anfal", ayah_id=3,
+                                start_offset=0, words=words)})
+
+    # ── the flicker itself ────────────────────────────────────────────
+
+    def test_a_mishearing_later_corrected_never_reaches_the_page(self):
+        """The bug this rule exists for, at its smallest.
+
+        One window mishears a correctly recited word; the next hears it
+        properly. Both happen inside the four seconds the word spends in
+        the windows, so the reciter must never see the red at all.
+        """
+        mushaf, tracker, clock = self._tracker()
+        self._feed(tracker, self._mistake())
+        clock.advance(0.4)
+        self._feed(tracker, self._correct())
+        clock.advance(SETTLE_SECONDS)
+        tracker.tick()
+
+        self.assertIs(mushaf.final().get((8, 3, 3)), True)
+        self.assertNotIn(
+            False, [s for su, a, i, s in mushaf.updates if (su, a, i) == (8, 3, 3)],
+            "the word went red on the way to being judged correct",
+        )
+
+    def test_a_real_mistake_still_goes_red_once_the_windows_are_done(self):
+        """A rule that only ever withholds is the app switched off."""
+        mushaf, tracker, clock = self._tracker()
+        self._feed(tracker, self._mistake())
+        self.assertNotIn((8, 3, 3), mushaf.final())
+
+        clock.advance(SETTLE_SECONDS)
+        tracker.tick()
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    # ── what the reciter sees while waiting ───────────────────────────
+
+    def test_a_word_waiting_for_its_verdict_is_shown_uncoloured(self):
+        """Not amber. Amber says "I could not read this", which is a verdict
+        of its own — and one that would flicker exactly the way the red did.
+        The word is uncovered and left plain: heard, not yet judged."""
+        mushaf, tracker, _clock = self._tracker()
+        self._feed(tracker, self._mistake())
+
+        self.assertIn((8, 3, 3), mushaf.revealed)
+        self.assertNotIn((8, 3, 3), mushaf.final())
+
+    def test_stopping_settles_everything_at_once(self):
+        """A session ending within four seconds of its last mistake must
+        still report it — the window that would have revised it is never
+        built, so waiting for it is waiting forever."""
+        mushaf, tracker, _clock = self._tracker()
+        self._feed(tracker, self._mistake())
+        self.assertNotIn((8, 3, 3), mushaf.final())
+
+        tracker.finalize()
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_reciting_a_word_again_withdraws_its_mark_while_it_is_reheard(self):
+        """Going back over a line is the commonest thing in revision. The
+        mark comes off while the new recitation is heard out, rather than
+        sitting there through it — and goes back on if it was earned."""
+        mushaf, tracker, clock = self._tracker()
+        self._feed(tracker, self._mistake())
+        clock.advance(SETTLE_SECONDS)
+        tracker.tick()
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+        clock.advance(10.0)
+        self._feed(tracker, self._mistake())
+        self.assertNotIn((8, 3, 3), mushaf.final(),
+                         "the old red sat on the page through a re-recitation")
+
+        clock.advance(SETTLE_SECONDS)
+        tracker.tick()
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_a_pause_is_enough_for_a_verdict_to_land(self):
+        """tick() is what the app calls on a timer. Without it a reciter who
+        pauses mid-page would sit looking at uncoloured words for as long as
+        they stayed quiet, because every other repaint is driven by a window
+        arriving."""
+        mushaf, tracker, clock = self._tracker()
+        self._feed(tracker, self._mistake())
+        clock.advance(SETTLE_SECONDS)
+
+        self.assertNotIn((8, 3, 3), mushaf.final(),
+                         "nothing asked, so nothing should have changed")
+        tracker.tick()
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_settling_is_not_a_verdict_of_its_own(self):
+        """A correctly recited word is not held back — it has no colour to
+        hold back. Only the decision to *mark* a word waits."""
+        mushaf, tracker, _clock = self._tracker()
+        self._feed(tracker, self._correct())
+        self.assertIn((8, 3, 3), mushaf.revealed)
+
+
 class StrictnessTests(unittest.TestCase):
     """How much evidence before a word is painted red.
 
@@ -800,9 +1205,18 @@ class StrictnessTests(unittest.TestCase):
                           reference_index=idx)
 
     def _feed(self, tracker, words):
+        """One window arrives, and the reciter carries on past these words.
+
+        The settle belongs to the fixture, not to each test: strictness is
+        about *how much evidence* a red needs, settling is about *when* no
+        more evidence is coming. Without it every test here would be
+        asserting the one thing no level controls — that a word still inside
+        the windows has no colour yet — rather than the level it names.
+        """
         tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
             "match": VerseMatch(surah_id=8, surah_name="Al-Anfal", ayah_id=3,
                                 start_offset=0, words=words)})
+        settle(tracker)
 
     def _tracker(self, level):
         mushaf = DummyMushafView()
@@ -978,3 +1392,73 @@ class StrictnessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PointerDoesNotRunAheadTests(unittest.TestCase):
+    """The pointer must not follow a word the matcher failed to recognise.
+
+    From logs/hifz-20260919-212247.log, Al-Fath recited straight through.
+    Three chunks running ended in a mis-transcribed token, and each one was
+    charged against whatever reference word the alignment happened to reach:
+    48:2:11 -> 48:2:14 -> 48:3:3 -> 48:4:4. The pointer finished two ayahs
+    ahead of a reciter who had not moved, twenty-two transcriptions in a row
+    then matched nothing, and the position was lost and re-discovered — which
+    is what the page jumping looks like from the reciter's chair.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+        cls.page_map = PageMap()
+
+    def _at(self, surah, ayah, word_index):
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map, self.index)
+        tracker.set_position(surah, ayah, word_index)
+        return mushaf, tracker
+
+    def test_a_stray_word_does_not_drag_the_pointer_into_the_next_ayah(self):
+        # Heard while reciting 48:2; every word but the last is an echo of
+        # text already gone by, and the last is not a Quran word at all.
+        text = "وَلَكَ اللَّهُ مَا تَقَدَّمَ مِنْ مِنْ ذَنْبِكَ وَمَا تَعْمَلُونَ"
+        _mushaf, tracker = self._at(48, 3, 1)
+        match = self.index.track(text, 48, 3, 1)
+        self.assertIsNotNone(match)
+
+        tracker.on_result({"text": text, "match": match, "mode": "tracking"})
+
+        # It used to land on 48:4:4 — seven reference words on, over six the
+        # reciter never touched. اللَّهُ at 48:3:1 is the last word here whose
+        # letters actually line up, so that is as far as the pointer may go.
+        where = (tracker.last_surah, tracker.last_ayah, tracker.last_word_index)
+        self.assertLessEqual(
+            where, (48, 3, 3), f"pointer ran to {where[0]}:{where[1]}:{where[2]}"
+        )
+
+    def test_ordinary_progress_still_moves_the_pointer(self):
+        """The guard must not freeze the pointer on correct recitation."""
+        text = "إِنَّا فَتَحْنَا لَكَ فَتْحًا مُبِينًا"
+        _mushaf, tracker = self._at(48, 1, 0)
+        match = self.index.track(text, 48, 1, 0)
+        self.assertIsNotNone(match)
+
+        tracker.on_result({"text": text, "match": match, "mode": "tracking"})
+
+        self.assertEqual(
+            (tracker.last_surah, tracker.last_ayah, tracker.last_word_index),
+            (48, 1, 4),
+        )
+
+    def test_a_word_wrong_only_in_its_voweling_still_places_the_reciter(self):
+        """عَلِيكَ for عَلَيْكَ is the right word, and says where he is."""
+        text = "وَيُتِمَّ نِعْمَتَهُ عَلِيكَ"
+        _mushaf, tracker = self._at(48, 2, 8)
+        match = self.index.track(text, 48, 2, 8)
+        self.assertIsNotNone(match)
+
+        tracker.on_result({"text": text, "match": match, "mode": "tracking"})
+
+        self.assertEqual(
+            (tracker.last_surah, tracker.last_ayah, tracker.last_word_index),
+            (48, 2, 11),
+        )

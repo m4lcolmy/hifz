@@ -45,8 +45,8 @@ from src.core.page_map import PageMap
 from src.core.quran import QuranIndex
 from src.ui.recitation import RecitationTracker
 from scripts.recitation_corpus import (
-    MANIFEST_PATH, RECITATIONS_DIR, UNAVAILABLE_PATH, case_from_entry,
-    load_pcm16, read_manifest,
+    JUZ30_MANIFEST_PATH, MANIFEST_PATH, RECITATIONS_DIR, UNAVAILABLE_PATH,
+    case_from_entry, load_pcm16, read_manifest,
 )
 
 RECORDS_DIR = PROJECT_ROOT / "tests" / "records"
@@ -153,17 +153,58 @@ class ScoreBoard:
 
     def __init__(self):
         self.current_page_num = None
+        self.page_serial = 0
         self.final: dict[tuple[int, int, int], bool | None] = {}
         self.writes = 0
         self.pages: list[int] = []
+        self.revealed: list[tuple[int, int, int]] = []
+        self.basmalas: list[int] = []
+        # Every word that was red at any point in the session, whether or not
+        # it still is. The final state is what this board scores, so a word
+        # painted red and then cleared costs nothing here — but the reciter
+        # saw the red. See `flashes`.
+        self.ever_red: set[tuple[int, int, int]] = set()
 
     def load_page(self, page_num: int):
         self.current_page_num = page_num
+        self.page_serial += 1
         self.pages.append(page_num)
 
     def update_recitation(self, surah: int, ayah: int, word_index: int, status):
         self.final[(surah, ayah, word_index)] = status
         self.writes += 1
+        if status is False:
+            self.ever_red.add((surah, ayah, word_index))
+
+    @property
+    def flashes(self) -> set[tuple[int, int, int]]:
+        """Words shown red during the session that are not red at the end.
+
+        A false alarm the final-state score cannot see. The reciter watching
+        the page saw the word go red and then go back — and a page that
+        reddens words it will itself retract is a page you learn to distrust,
+        which costs more than the retracted words.
+        """
+        return {w for w in self.ever_red if self.final.get(w) is not False}
+
+    def reveal(self, surah: int, ayah: int, word_index: int) -> bool:
+        """Shown, with no verdict attached.
+
+        Any verdict the word was carrying comes off the page with it, so the
+        board keeps mirroring what the reciter can actually see. A word left
+        in this state at the end of the run is scored as never given a
+        verdict — which is what it is.
+        """
+        self.revealed.append((surah, ayah, word_index))
+        self.final.pop((surah, ayah, word_index), None)
+        return True
+
+    def paint_basmala(self, surah: int, status: bool = True) -> bool:
+        """The real view answers False where the page carries no bismillah
+        line for that surah; here every page is assumed to carry one, so
+        callers are exercised on the path that does something."""
+        self.basmalas.append(surah)
+        return True
 
 
 @dataclass
@@ -205,6 +246,7 @@ class Result:
         return max(0, self.expected_words - self.ok - self.wrong - self.missed)
 
     flagged: set = field(default_factory=set)   # positions painted red
+    flashed: set = field(default_factory=set)   # painted red, then cleared
 
     @property
     def caught(self) -> int:
@@ -215,6 +257,16 @@ class Result:
     def false_alarms(self) -> int:
         """Red words that were NOT a deliberate mistake."""
         return len(self.flagged - set(self.expectation.mistakes))
+
+    @property
+    def flashes(self) -> int:
+        """Words the reciter saw go red mid-session and then go back.
+
+        Not counted in `false_alarms`, which scores the page as it is left.
+        This is the cost the final-state score cannot charge: a retracted red
+        is a red the reciter still had to read, stop at and doubt.
+        """
+        return len(self.flashed - set(self.expectation.mistakes))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -331,6 +383,13 @@ def run_levels(model, index, page_map, path: Path, exp: Expectation,
             if decision.match is not None:
                 res.found_position = True
 
+            # The app runs a timer that asks the tracker whether anything has
+            # settled, because a verdict held back until no window can revise
+            # it needs *something* to ask once the windows stop arriving.
+            # Here the windows are the clock, so asking after each one is the
+            # same question at the same simulated times.
+            tracker.tick()
+
     wall = time.monotonic() - t0
     lo, hi = exp.ayahs
     for level, (board, _virtual, tracker) in runs.items():
@@ -360,6 +419,9 @@ def run_levels(model, index, page_map, path: Path, exp: Expectation,
                     res.wrong_words.append(f"{surah}:{ayah}:{word_index}")
             else:
                 res.missed += 1
+
+        res.flashed = {w for w in board.flashes
+                       if w[0] == exp.surah and lo <= w[1] <= hi}
 
     if verbose:
         first = results[levels[0]]
@@ -400,6 +462,7 @@ class Totals:
     wrong: int = 0
     missed: int = 0
     false_alarms: int = 0
+    flashes: int = 0
     expected: int = 0
     unshown: int = 0
     mistakes: int = 0
@@ -421,6 +484,17 @@ class Totals:
             return None
         return 100 * self.false_alarms / self.scored
 
+    @property
+    def flash_rate(self) -> float | None:
+        """Retracted reds as a fraction of words scored.
+
+        Reported beside the false alarm rate because the two trade against
+        each other: anything that waits longer before painting red lowers
+        this and can only raise `unshown` — never the other way round."""
+        if not self.scored:
+            return None
+        return 100 * self.flashes / self.scored
+
 
 def totals_for(results: list[Result], label: str) -> Totals:
     t = Totals(label=label, cases=len(results))
@@ -430,6 +504,7 @@ def totals_for(results: list[Result], label: str) -> Totals:
         t.wrong += r.wrong
         t.missed += r.missed
         t.false_alarms += r.false_alarms
+        t.flashes += r.flashes
         t.unshown += r.unshown
         t.mistakes += r.expectation.mistake_count
         t.caught += r.caught
@@ -461,19 +536,20 @@ def print_breakdown(title: str, rows: list[Totals], first_col: str, note: str = 
     if note:
         print(f"  {note}")
     print(f"  {first_col:<28} {'cases':>5} {'found':>6} {'scored':>7} "
-          f"{'cover':>7} {'false':>7}")
-    print("  " + "-" * 66)
+          f"{'cover':>7} {'false':>7} {'flash':>7}")
+    print("  " + "-" * 74)
     for t in rows:
         cov = f"{t.coverage:.1f}%" if t.coverage is not None else "-"
         far = f"{t.false_alarm_rate:.1f}%" if t.false_alarm_rate is not None else "-"
+        flr = f"{t.flash_rate:.1f}%" if t.flash_rate is not None else "-"
         flag = ""
         if t.coverage is not None and t.coverage < 95:
             flag = "  <-- COVERAGE"
         if t.false_alarm_rate is not None and t.false_alarm_rate >= 5:
             flag += "  <-- FALSE ALARMS"
         print(f"  {t.label[:28]:<28} {t.cases:5} {t.found:6} {t.scored:7} "
-              f"{cov:>7} {far:>7}{flag}")
-    print("  " + "-" * 66)
+              f"{cov:>7} {far:>7} {flr:>7}{flag}")
+    print("  " + "-" * 74)
 
 
 def report(results: list[Result], engine_label: str = ""):
@@ -487,15 +563,15 @@ def report(results: list[Result], engine_label: str = ""):
     # individually meaningful, and only the failing rows for a large one.
     big = len(results) > 30
     rows = [r for r in results
-            if r.false_alarms or r.unshown or not r.found_position
+            if r.false_alarms or r.flashes or r.unshown or not r.found_position
             or r.caught < r.expectation.mistake_count] if big else results
     if big:
         print(f"  {len(results)} cases; showing the {len(rows)} with something "
               f"to look at")
 
     print(f"  {'recording':<40} {'position':>9} {'ok':>5} {'caught':>7} "
-          f"{'miss':>5} {'false':>6} {'unseen':>7} {'drop%':>6}")
-    print("  " + "-" * 92)
+          f"{'miss':>5} {'false':>6} {'flash':>6} {'unscored':>9} {'drop%':>6}")
+    print("  " + "-" * 99)
 
     for r in rows:
         pos = "FOUND" if r.found_position else "LOST"
@@ -505,14 +581,19 @@ def report(results: list[Result], engine_label: str = ""):
         if r.expectation.mistakes and r.caught < r.expectation.mistake_count:
             flag += "  <-- MISSED A REAL MISTAKE"
         if r.unshown:
-            flag += f"  <-- {r.unshown} WORD(S) NEVER SHOWN"
+            # "unscored", not "never shown": `reveal()` uncovers a word on
+            # the page without attaching a verdict to it, and since correct
+            # recitation stopped being tinted those words look exactly like
+            # correct ones. The reciter may well have seen every one of them.
+            # What the app never did was say anything about them.
+            flag += f"  <-- {r.unshown} WORD(S) NEVER SCORED"
         name = r.name[:38].replace(".flac", "")
         caught = (f"{r.caught}/{r.expectation.mistake_count}"
                   if r.expectation.mistakes else "-")
         print(f"  {name:<40} {pos:>9} {r.ok:5} {caught:>7} {r.missed:5} "
-              f"{r.false_alarms:6} {r.unshown:7} {drop:5.0f}%{flag}")
+              f"{r.false_alarms:6} {r.flashes:6} {r.unshown:7} {drop:5.0f}%{flag}")
 
-    print("  " + "-" * 92)
+    print("  " + "-" * 99)
 
     flagged = [r for r in results if r.wrong_words]
     if flagged and not big:
@@ -565,6 +646,11 @@ def report(results: list[Result], engine_label: str = ""):
               f"{t.false_alarm_rate:.1f}%   <-- the number to drive down")
         print( "                          (a fraction of words SCORED — showing "
                "fewer words flatters it, so coverage must hold)")
+    if t.flash_rate is not None:
+        print(f"  RETRACTED REDS          {t.flashes}/{t.scored} = "
+              f"{t.flash_rate:.1f}% of words went red and came back")
+        print( "                          (invisible above: the page is scored "
+               "as it is LEFT, and the reciter watched it)")
     if t.mistakes:
         print(f"  DELIBERATE MISTAKES     {t.caught}/{t.mistakes} caught"
               f"   <-- must stay at {t.mistakes}/{t.mistakes}")
@@ -583,6 +669,94 @@ def report(results: list[Result], engine_label: str = ""):
     print(f"  audio {audio:.0f}s processed in {wall:.0f}s "
           f"({wall / audio:.2f}x real time)" if audio else "")
     print("=" * 96)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Whole surahs, recited by whoever owns the app
+# ═══════════════════════════════════════════════════════════════════════
+
+#: Where a recording of a whole surah goes. One file, one surah, recited
+#: from its first word to its last.
+OWN_SURAHS_DIR = RECORDS_DIR / "surahs"
+
+#: `mistake 4:7` — ayah 4, seventh word, counted the way a person counts.
+_MISTAKE = re.compile(r"mistake\s+(\d+)\s*[:.]\s*(\d+)", re.IGNORECASE)
+
+
+def cases_from_own_surahs(directory: Path = OWN_SURAHS_DIR,
+                          index: "QuranIndex | None" = None,
+                          ) -> list[tuple[Path, Expectation]]:
+    """Whole-surah recordings, labelled by the surah number in the filename.
+
+    **This is the only corpus in the project that is both the right shape and
+    the right conditions**, and it is the only one that cannot be downloaded.
+    The fetched corpora fix the shape — a session is a whole surah, opened
+    cold — but every file in them was recorded to be published, in a studio,
+    by a qāriʾ. The measured gap is not small: the same code scores 2.2% false
+    alarms across 273 fetched cases and 25–48% on this reciter's own
+    microphone. Whatever is costing those thirty points is not in any
+    corpus here, so nothing here can be used to fix it.
+
+    **The label cannot be typed wrong, because there is nothing to type.** A
+    whole surah runs from ayah 1 to its last ayah, and how many ayahs a surah
+    has is a fact the app already knows — so naming the file after the surah
+    fixes the ayah range completely. That closes the failure Tier D found:
+    two of eleven hand-made recordings named ayahs their audio does not
+    contain, because the range was typed by a person from memory.
+
+        tests/records/surahs/
+            093 ad-duhaa.flac
+            109 al-kafirun mistake 3:2.flac
+            112.flac
+
+    Everything after the number is for the human reading the directory, with
+    two exceptions the parser looks for:
+
+      - `mistake <ayah>:<word>` — a word deliberately recited wrong, the word
+        counted from 1 the way a person counts. Repeat it for several. This
+        is the one thing that still has to be typed, because a deliberate
+        mistake is a fact about what the reciter did and no file can know it.
+      - `partial` — the recording stops early. Coverage is then not charged
+        for the words that were never recited, the way it is not charged for
+        `surah mutaffifin 1-19`, whose audio is missing three ayahs.
+    """
+    if not directory.exists():
+        return []
+    if index is None:
+        index = QuranIndex()
+
+    cases: list[tuple[Path, Expectation]] = []
+    for path in sorted(directory.iterdir()):
+        if path.suffix.lower() not in (".flac", ".wav", ".mp3", ".m4a", ".ogg"):
+            continue
+        digits = re.match(r"\s*(\d{1,3})", path.stem)
+        if not digits:
+            print(f"  ({path.name}: no surah number at the start of the name)")
+            continue
+        surah = int(digits.group(1))
+        last = index.last_ayah(surah)
+        if not last:
+            print(f"  ({path.name}: {surah} is not a surah)")
+            continue
+
+        mistakes = tuple(
+            # 0-based on the way in, because that is what the tracker paints
+            # with and what `EXPECTATIONS` already stores. Converted exactly
+            # once, here, where the 1-based half is a filename a human wrote.
+            (surah, int(ayah), int(word) - 1)
+            for ayah, word in _MISTAKE.findall(path.stem)
+        )
+        cases.append((path, Expectation(
+            pattern=path.name,
+            surah=surah,
+            ayahs=(1, last),
+            mistakes=mistakes,
+            note="whole surah, recited by the app's own user",
+            partial="partial" in path.stem.lower(),
+            stratum="my own recording",
+            reciter="me",
+        )))
+    return cases
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -737,14 +911,30 @@ def main():
              "generated, not typed.",
     )
     ap.add_argument(
-        "--manifest", type=Path, default=MANIFEST_PATH,
-        help="corpus manifest for --from-recitations",
+        "--juz30", action="store_true",
+        help="with --from-recitations, score the juz 30 corpus: whole short "
+             "surahs, each recited from its basmala, which is the shape of a "
+             "session rather than an ayah lifted out of the middle of one",
+    )
+    ap.add_argument(
+        "--manifest", type=Path, default=None,
+        help="corpus manifest for --from-recitations (default: the stratified "
+             "corpus, or the juz 30 one with --juz30)",
     )
     ap.add_argument(
         "--recitations-dir", type=Path, default=RECITATIONS_DIR,
         help="where the fetched audio lives",
     )
     args = ap.parse_args()
+
+    if args.manifest is None:
+        args.manifest = JUZ30_MANIFEST_PATH if args.juz30 else MANIFEST_PATH
+    if args.juz30 and not args.from_recitations:
+        # --juz30 names a corpus, and a corpus is only read by
+        # --from-recitations. Silently scoring tests/records/ instead would
+        # print a full report for the wrong twelve recordings.
+        print("  --juz30 selects a fetched corpus; add --from-recitations")
+        return 1
 
     if args.debug_log:
         from src.core.debug import log as debug_log
@@ -796,6 +986,16 @@ def main():
                 print(f"  (no file for '{exp.pattern}')")
                 continue
             cases.append((matches[0], exp))
+        # Whole surahs recorded by whoever owns the app. Scored beside the
+        # hand-made cases and broken out as their own stratum, because they
+        # are the only audio in this project with a real microphone in it
+        # and averaging them into studio recordings would hide exactly the
+        # gap they exist to measure.
+        own = cases_from_own_surahs(index=index)
+        if own:
+            print(f"  {len(own)} whole surah(s) from "
+                  f"{OWN_SURAHS_DIR.relative_to(PROJECT_ROOT)}")
+        cases.extend(own)
 
     levels = (list(STRICTNESS_LEVELS) if args.strictness == "all"
               else [args.strictness or STRICTNESS])

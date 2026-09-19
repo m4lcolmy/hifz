@@ -40,8 +40,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.recitation_corpus import (
-    MANIFEST_PATH, RECITATIONS_DIR, RECITERS, RUN_GAP_MS, SEED, SOURCE,
-    UNAVAILABLE_PATH, Case, all_cases, build_corpus, build_manifest, decodes,
+    JUZ30_MANIFEST_PATH, MANIFEST_PATH, RECITATIONS_DIR, RECITERS, RUN_GAP_MS,
+    SEED, SOURCE, UNAVAILABLE_PATH, Case, all_cases, build_corpus,
+    build_juz30_corpus, build_juz30_manifest, build_manifest, decodes,
     load_pcm16, write_manifest,
 )
 import json
@@ -61,7 +62,7 @@ def part_url(reciter: str, surah: int, part: int) -> str:
 # The plan
 # ═══════════════════════════════════════════════════════════════════════
 
-def show_plan(strata, manifest_path: Path):
+def show_plan(strata, manifest_path: Path, flags: str = ""):
     cases = all_cases(strata)
     ayahs = sum(c.last_ayah - c.first_ayah + 1 for c in cases)
     parts = sum(max(1, len(c.parts)) for c in cases)
@@ -87,16 +88,20 @@ def show_plan(strata, manifest_path: Path):
     print("=" * 78)
     print("  STRATA — deliberately not uniform")
     print("=" * 78)
-    print(f"  {'stratum':<12} {'files':>6} {'ayahs':>6} {'target':>7}   why")
+    # Wide enough for the longest stratum name there is; a name that
+    # overflows its column pushes every number on that row out of line, and
+    # the point of the table is comparing the numbers.
+    name_w = max(12, *(len(s.name) for s in strata))
+    print(f"  {'stratum':<{name_w}} {'files':>6} {'ayahs':>6} {'target':>7}   why")
     print("  " + "-" * 74)
     for s in strata:
         n_ayahs = sum(c.last_ayah - c.first_ayah + 1 for c in s.cases)
         why = _wrap(s.why, 40)
-        print(f"  {s.name:<12} {len(s.cases):6} {n_ayahs:6} {s.target:7}   {why[0]}")
+        print(f"  {s.name:<{name_w}} {len(s.cases):6} {n_ayahs:6} {s.target:7}   {why[0]}")
         for line in why[1:]:
-            print(f"  {'':<12} {'':>6} {'':>6} {'':>7}   {line}")
+            print(f"  {'':<{name_w}} {'':>6} {'':>6} {'':>7}   {line}")
     print("  " + "-" * 74)
-    print(f"  {'TOTAL':<12} {len(cases):6} {ayahs:6}")
+    print(f"  {'TOTAL':<{name_w}} {len(cases):6} {ayahs:6}")
     print()
     print(f"  {parts} source files, roughly {parts * 90 // 1024} MB")
     print(f"  seed {SEED} (committed — the corpus is reproducible)")
@@ -107,7 +112,7 @@ def show_plan(strata, manifest_path: Path):
           f"<reciter>/  (gitignored)")
     print()
     print("  Read the terms above, then:")
-    print("    python scripts/fetch_recitations.py --agree")
+    print(f"    python scripts/fetch_recitations.py {flags}--agree")
     print()
 
 
@@ -304,20 +309,32 @@ def main():
                     help=f"corpus seed (default {SEED}, committed — changing "
                          f"it makes every stored number incomparable)")
     ap.add_argument("--dest", type=Path, default=RECITATIONS_DIR)
-    ap.add_argument("--manifest", type=Path, default=MANIFEST_PATH)
+    ap.add_argument("--manifest", type=Path, default=None,
+                    help="where to write the corpus definition (default: the "
+                         "one belonging to the corpus being fetched)")
+    ap.add_argument(
+        "--juz30", action="store_true",
+        help="fetch the juz 30 corpus instead: whole short surahs, each from "
+             "its basmala, which is the shape of a real session rather than "
+             "an ayah lifted out of the middle of one",
+    )
     args = ap.parse_args()
 
-    strata = build_corpus(args.seed)
+    strata = (build_juz30_corpus(args.seed) if args.juz30
+              else build_corpus(args.seed))
+    manifest_of = build_juz30_manifest if args.juz30 else build_manifest
+    if args.manifest is None:
+        args.manifest = JUZ30_MANIFEST_PATH if args.juz30 else MANIFEST_PATH
 
     if not args.agree:
-        write_manifest(build_manifest(args.seed), args.manifest)
-        show_plan(strata, args.manifest)
+        write_manifest(manifest_of(args.seed), args.manifest)
+        show_plan(strata, args.manifest, "--juz30 " if args.juz30 else "")
         if not args.plan:
             print("  Nothing was downloaded. Re-run with --agree.\n")
             return 1
         return 0
 
-    write_manifest(build_manifest(args.seed), args.manifest)
+    write_manifest(manifest_of(args.seed), args.manifest)
 
     cases = all_cases(strata)
     if args.only:
@@ -354,8 +371,10 @@ def main():
         if len(fetcher.failed) > 10:
             print(f"    … and {len(fetcher.failed) - 10} more")
 
+    measure = ("--from-recitations --juz30" if args.juz30
+               else "--from-recitations")
     print(f"\n  Now measure it:\n"
-          f"    python scripts/benchmark_recordings.py --from-recitations\n")
+          f"    python scripts/benchmark_recordings.py {measure}\n")
     return 0
 
 

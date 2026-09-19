@@ -18,8 +18,8 @@ observation is ranked and the best evidence wins:
     a word seen whole beats a word seen at a window edge,
     and within that, correct beats wrong beats missed.
 
-A word may therefore turn from red to green as better evidence arrives, but
-never the other way around on weaker evidence.
+A word may therefore lose its red as better evidence arrives, but never gain
+one on weaker evidence.
 """
 
 import time
@@ -28,13 +28,44 @@ from src.config import (
     TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
     STRICTNESS, STRICTNESS_LEVELS,
     REDISCOVERY_MAX_GAP, PRELOCK_BUFFER_SECONDS, PRELOCK_MAX_CHUNKS,
+    POINTER_SLACK,
+    PRELOCK_REVEAL_WORDS,
+    SETTLE_SECONDS,
 )
 from src.core.arabic import normalize, split_words
 from src.core.quran import BASMALA_TEXT, basmala_prefix
 from src.core.debug import log
 from src.core.page_map import PageMap
 from src.ui.mushaf_view import MushafView
-from src.ui.style import CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR, VERSE_REF_COLOR
+from src.ui.style import (CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR,
+                          TEXT_PRIMARY, VERSE_REF_COLOR)
+
+
+class _Pending:
+    """Heard, not yet decided — the fourth thing a word can be.
+
+    True, False and None are verdicts: plain ink, red, amber. This is the
+    absence of one, and it needs its own value because the page must be able
+    to tell "no colour because the word was right" apart from "no colour yet
+    because the windows that will judge it have not all arrived". The first
+    is a decision and the second is a promise to decide.
+
+    It never reaches the Mushaf as a status. _repaint() turns it into a
+    reveal() — the word uncovered and left alone — which is what the app
+    already does for words it knows were recited and cannot judge.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self):
+        return "PENDING"
+
+    def __bool__(self):
+        # Guards against `if status:` quietly treating it as a verdict.
+        raise TypeError("PENDING is not a verdict; compare with `is PENDING`")
+
+
+PENDING = _Pending()
 
 
 def _rank(word) -> int:
@@ -83,6 +114,34 @@ def _is_fragment(word) -> bool:
     if len(heard) < 2 or len(heard) >= len(whole):
         return False
     return whole.startswith(heard) or whole.endswith(heard)
+
+
+def _places(word) -> bool:
+    """Does this verdict say anything about where the reciter is?
+
+    Only a word whose letters actually line up with the reference does. A
+    word the matcher could not recognise lines up with *something* — the
+    aligner always pairs what it is given — but which reference word it
+    landed on is an artefact of the alignment, not a fact about the reciter.
+
+    This is the same argument _compare_words already makes about echoes, and
+    it matters for the same reason. Al-Fath 48:2 was being repeated from its
+    start; the window could not see that far back, so three chunks running
+    ended in a mis-transcribed token — مَرٌّ, تَقَ, تَعْمَلُونَ — that the
+    aligner charged against the word it happened to reach. Each one carried
+    the pointer forward: 48:2:11 -> 48:2:14 -> 48:3:3 -> 48:4:4, two ayahs
+    past a reciter who had not moved. From there nothing he said could match,
+    and four seconds later the position was lost and re-discovered.
+
+    Diacritics do not come into it. عَلِيكَ heard for عَلَيْكَ is the right
+    word in the wrong voweling — wrong on the page, but exactly right about
+    where he is.
+    """
+    if not word.recited or not word.reference:
+        return False
+    if word.is_correct:
+        return True
+    return normalize(word.recited) == normalize(word.reference) or _is_fragment(word)
 
 
 def letter_distance(word) -> int:
@@ -200,8 +259,27 @@ class RecitationTracker:
         # page. Recognising it is the difference between "the app is thinking"
         # and "the app is broken".
         self._basmala_heard = False
-        # What the Mushaf currently shows, so a repaint only pushes changes.
+        # When it was last heard, so it can be attributed to the surah that
+        # follows it rather than to every surah for the rest of the session.
+        self._basmala_at: float | None = None
+        # Surahs the reciter has been judged to have opened with it. The
+        # Mushaf prints that line above every surah but At-Tawbah and it
+        # belongs to no ayah, so nothing was ever going to colour it word by
+        # word — and a reciter watching the line they just recited stay black
+        # while the rest of the page fills in reads that as the app having
+        # missed it. Sticky, and re-applied on every page turn: it is a
+        # decision about the session, not a colour on one page.
+        self._basmala_surahs: set[int] = set()
+        # What the Mushaf currently shows, so a repaint only pushes changes,
+        # and which page that belief is about. load_page() rebuilds the scene,
+        # so a belief carried across a page turn is a belief about hitboxes
+        # that no longer exist — every word would be skipped as "already this
+        # colour" and the new page would stay blank.
         self._painted: dict[tuple[int, int, int], object] = {}
+        self._painted_page = mushaf_view.page_serial
+        # Words shown without a verdict: recited, never placed. See
+        # _reveal_head().
+        self._revealed: set[tuple[int, int, int]] = set()
 
         # How much evidence is needed before a word is painted red. The
         # reciter's decision, not the model's — see STRICTNESS in config.py.
@@ -215,6 +293,12 @@ class RecitationTracker:
         # Words committed on stop, exempt from the confirmation requirement.
         # See finalize().
         self._no_more_windows: set[tuple[int, int, int]] = set()
+        # When each word was last inside an audio window, so a colour is held
+        # back until no further window can revise it. See _settled().
+        self._seen_at: dict[tuple[int, int, int], float] = {}
+        # Set by finalize(): the reciter has stopped, so every word has had
+        # every look it is ever going to get.
+        self._session_over = False
 
     # ── Strictness ─────────────────────────────────────────────────────
 
@@ -244,6 +328,21 @@ class RecitationTracker:
     def mode(self) -> str:
         return self._mode
 
+    @property
+    def last_surah_name(self) -> str | None:
+        """The name of the surah being recited, for the bar to say.
+
+        "An-Nisa 4:12" is a place; "4:12" is a coordinate you have to look
+        up. In Latin letters, because the bar is set left to right and the
+        Arabic name beside an ayah number comes out reordered — see
+        QuranIndex.surah_label().
+        """
+        if self.last_surah is None:
+            return None
+        if self._quran_index is not None:
+            return self._quran_index.surah_label(self.last_surah)
+        return self._surah_names.get(self.last_surah)
+
     def reset(self):
         self.last_surah = None
         self.last_ayah = None
@@ -262,7 +361,12 @@ class RecitationTracker:
         self._last_known = None
         self._pending.clear()
         self._basmala_heard = False
+        self._basmala_at = None
+        self._basmala_surahs.clear()
         self._painted.clear()
+        self._revealed.clear()
+        self._seen_at.clear()
+        self._session_over = False
 
     def set_position(self, surah: int, ayah: int, word_index: int = 0):
         """Manually set position (e.g. user tapped on Mushaf).
@@ -313,12 +417,20 @@ class RecitationTracker:
             log.tracker(f"discovery -> tracking @ {match.surah_id}:{match.ayah_id}")
             self._fill_prelock(match)
             self._fill_rediscovery_gap(match)
+            just_locked = True
             # Fall through to process the match
+        else:
+            just_locked = False
 
         if match is None:
             # Tracking mode but no local match. If this keeps happening the
             # reciter has moved somewhere we are not following — drop back to
             # discovery rather than staying stuck on a stale pointer.
+            # A basmala is the commonest reason a tracked chunk fails to
+            # match: it belongs to no ayah, so the reciter finishing one surah
+            # and opening the next reads as a miss. Hearing it here is what
+            # lets the next surah's bismillah line be painted.
+            self._note_basmala(text)
             if result.get("attempted", True):
                 now = self._clock()
                 if self._first_miss_at is None:
@@ -357,6 +469,10 @@ class RecitationTracker:
         self._misses = 0
         self._first_miss_at = None
         self._absorb(match)
+        if just_locked:
+            # After _absorb, not before: the page the words live on is loaded
+            # there, and there is nothing to reveal on a page that is not up.
+            self._reveal_head(match)
         if self.last_surah is not None:
             self._last_known = (self.last_surah, self.last_ayah, self.last_word_index)
         return self._render()
@@ -366,13 +482,21 @@ class RecitationTracker:
 
         Three of its four words, so a passing الرحمن الرحيم — which is an ayah
         of its own at 55:1 and part of 1:3 — cannot trigger it.
+
+        Recorded every time, not only the first. A session is not one surah:
+        the reciter finishes one and opens the next, and the basmala that
+        opens the fourth surah must be credited to the fourth surah and not
+        still be sitting there from the first.
         """
-        if self._basmala_heard or not text:
+        if not text:
             return
         words = [normalize(w) for w in split_words(text)]
-        if basmala_prefix(words) >= 3:
-            self._basmala_heard = True
+        if basmala_prefix(words) < 3:
+            return
+        if not self._basmala_heard:
             log.count("basmala_heard")
+        self._basmala_heard = True
+        self._basmala_at = self._clock()
 
     def _remember_unplaced(self, text: str):
         """Hold a transcription discovery could not place.
@@ -478,11 +602,18 @@ class RecitationTracker:
         """Merge one match's word verdicts into the running best-evidence map."""
         self._surah_names[match.surah_id] = match.surah_name
         self._observations += 1
+        now = self._clock()
 
         edge_ids = self._edge_word_ids(match)
         current_page = None
 
-        for w in match.words:
+        # How far into this match the alignment is still vouched for. Past
+        # the last word whose letters actually line up, the pairing is the
+        # aligner's arithmetic and nothing more — see _places().
+        placed = [i for i, w in enumerate(match.words) if _places(w)]
+        pointer_limit = (placed[-1] + POINTER_SLACK) if placed else -1
+
+        for position, w in enumerate(match.words):
             if w.surah_id is None or w.ayah_id is None or w.reference_index is None:
                 continue
             if not w.recited and not w.reference:
@@ -490,6 +621,13 @@ class RecitationTracker:
 
             word_id = (w.surah_id, w.ayah_id, w.reference_index)
             at_edge = word_id in edge_ids
+
+            # This window contained the word, so the clock on how long it has
+            # been out of the windows restarts — whatever the verdict was and
+            # whether or not it wins the quality contest below. A word being
+            # re-recited restarts it too, which is right: the reciter going
+            # back over a line is exactly when a verdict should be reopened.
+            self._seen_at[word_id] = now
 
             # Count how many separate windows have heard this word wrong.
             # Counted before the edge branch and before the quality contest,
@@ -508,7 +646,7 @@ class RecitationTracker:
             # had left seconds ago, and three failures dropped us back into
             # discovery. That is what lost the position three times in one
             # recitation of Al-Fatiha.
-            if w.recited:
+            if w.recited and position <= pointer_limit:
                 self.last_surah = w.surah_id
                 self.last_ayah = w.ayah_id
                 self.last_word_index = w.reference_index
@@ -555,6 +693,8 @@ class RecitationTracker:
                 self._mushaf.load_page(page_num)
                 current_page = page_num
 
+            # After the page is up, so the line exists to be painted.
+            self._claim_basmala(w.surah_id, w.ayah_id)
             self._commit(w, quality, previous)
 
         # A repaint even when nothing was committed. Under `confirmed` the
@@ -564,6 +704,79 @@ class RecitationTracker:
         # fires and the page would keep showing amber for a word that is now
         # confirmed wrong. The same reason _repaint() exists for neighbours.
         self._repaint()
+
+    def _claim_basmala(self, surah_id: int, ayah_id: int):
+        """Paint the bismillah line the reciter opened this surah with.
+
+        The reciter is the only evidence there is. The line is part of no
+        ayah outside 1:1, so there is nothing to compare a transcription
+        against word by word — but a basmala heard shortly before the first
+        ayah of a surah arrives is, near enough always, that surah's basmala,
+        and it is four short words nobody gets wrong. So it is accepted on
+        the reciter's word — which, now that correct recitation carries no
+        colour, means the line is left as printed rather than marked.
+
+        Three things keep that from becoming a lie:
+
+        - only at ayah 1. Landing mid-surah says nothing about how the surah
+          was opened, and may be a re-lock long after it was.
+        - only if the basmala was heard within the pre-lock window. Otherwise
+          one basmala at the start of a session would go on crediting every
+          surah recited for the rest of it.
+        - At-Tawbah has no bismillah line and Al-Fatiha's *is* ayah 1:1,
+          scored word by word like anything else. Neither is in the Mushaf's
+          bismillah map, so both decline themselves.
+        """
+        if ayah_id != 1 or surah_id in self._basmala_surahs:
+            return
+        if self._basmala_at is None:
+            return
+        if self._clock() - self._basmala_at > PRELOCK_BUFFER_SECONDS:
+            return
+        if not self._mushaf.paint_basmala(surah_id, True):
+            return
+        self._basmala_surahs.add(surah_id)
+        log.count("basmala_painted")
+        log.mushaf(f"painted the bismillah of surah {surah_id}")
+
+    def _reveal_head(self, match):
+        """Show the words recited before discovery could say where they were.
+
+        Discovery needs several words before a position is unique, so the run
+        it spends getting there is exactly the run that never reaches the
+        page: every session opens with its first phrase missing, and the
+        reciter sees the Mushaf start filling in from the middle of the ayah
+        they began. _fill_prelock() recovers a verdict wherever the held
+        transcriptions can be lined up against the reference; this is what is
+        left when they cannot.
+
+        These words are revealed, not coloured. The app knows they were
+        recited — that is what the lock landing here means — and does not
+        know whether they were right. Green would be a claim it never made,
+        amber would call correct recitation a mistake.
+        """
+        first = next(
+            (w for w in match.words
+             if w.surah_id is not None and w.reference_index is not None),
+            None,
+        )
+        if first is None or first.reference_index <= 0:
+            return
+        start = max(0, first.reference_index - PRELOCK_REVEAL_WORDS)
+        shown = 0
+        for index in range(start, first.reference_index):
+            word_id = (first.surah_id, first.ayah_id, index)
+            if word_id in self._scored or word_id in self._revealed:
+                continue
+            self._revealed.add(word_id)
+            if self._mushaf.reveal(*word_id):
+                shown += 1
+        if shown:
+            log.count("prelock_revealed", shown)
+            log.tracker(
+                f"revealed {shown} unscored word(s) before the lock at "
+                f"{first.surah_id}:{first.ayah_id}:{first.reference_index}"
+            )
 
     def _commit(self, w, quality, previous=None):
         """Record a verdict and paint it on the page."""
@@ -606,18 +819,51 @@ class RecitationTracker:
                 clear += 1
         return clear >= 1
 
+    def _settled(self, word_id) -> bool:
+        """Has this word had every look it is ever going to get?
+
+        A word sits inside the sliding window for one window's length after
+        it is recited, and is transcribed afresh by each of the ~20 windows
+        that contain it. Until the last of them has been and gone, the
+        verdict on the page is provisional — and since a correct look
+        permanently outranks a wrong one, "provisional" in practice means
+        "may be about to lose its red".
+
+        So the word is settled once nothing has mentioned it for SETTLE_
+        SECONDS, or once the reciter has stopped and no window is coming at
+        all. `_no_more_windows` says the same thing about one word: it is
+        set by finalize() for verdicts that reached the end of the audio.
+        """
+        if self._session_over or word_id in self._no_more_windows:
+            return True
+        seen = self._seen_at.get(word_id)
+        if seen is None:
+            # Never observed directly — a gap-fill or a pre-lock recovery.
+            # No window was ever going to look at it again anyway.
+            return True
+        return (self._clock() - seen) >= SETTLE_SECONDS
+
     def _effective_status(self, word_id):
-        """The colour a word actually gets, after the neighbour rule."""
+        """The colour a word actually gets, after the neighbour rule.
+
+        True, False, None — or PENDING, meaning the word has been heard and
+        the app is not finished deciding. PENDING is returned *before* any
+        verdict is considered, because a word still inside the windows can
+        have its verdict changed by any of them: painting it amber while
+        waiting would only trade a red that flickers for an amber that does.
+        """
         entry = self._scored.get(word_id)
         if entry is None:
             return None
+        if not self._settled(word_id):
+            return PENDING
         status = self._status(entry[1])
         if status is not False:
             return status
 
         # Wrong — but how much has to be true before the page says so is the
         # reciter's choice. Everything below declines to condemn by returning
-        # amber, never by returning green: "I could not read this" is honest,
+        # amber, never by returning True: "I could not read this" is honest,
         # "you said it correctly" would not be.
         rules = self._rules
         if not rules["paint_wrong"]:
@@ -650,14 +896,48 @@ class RecitationTracker:
 
         A word's colour can change without new evidence about that word: its
         neighbour being confirmed is what licenses it to be shown as wrong.
+
+        A page turn is the other way a colour changes without evidence:
+        load_page() rebuilds the scene, so every hitbox this cache is about
+        has been destroyed and the new page is blank. Believing otherwise
+        makes each word "already that colour" and nothing is ever pushed —
+        which is why a page turn used to leave the page it turned to empty.
         """
+        if self._mushaf.page_serial != self._painted_page:
+            self._painted_page = self._mushaf.page_serial
+            self._painted.clear()
+            self._revealed.clear()
+            for surah_id in self._basmala_surahs:
+                self._mushaf.paint_basmala(surah_id, True)
+
         for word_id in self._order:
             if word_id not in self._scored:
                 continue
             status = self._effective_status(word_id)
-            if self._painted.get(word_id, "unset") != status:
-                self._painted[word_id] = status
+            if self._painted.get(word_id, "unset") is status:
+                continue
+            self._painted[word_id] = status
+            if status is PENDING:
+                # Uncover it and say nothing. The reciter sees the word they
+                # just recited appear, which is the feedback that matters
+                # while reciting; the verdict follows when it is one.
+                self._mushaf.reveal(*word_id)
+                self._revealed.add(word_id)
+            else:
                 self._mushaf.update_recitation(*word_id, status)
+
+    def tick(self):
+        """Repaint on the clock alone, with no new audio to absorb.
+
+        Every other repaint is driven by a window arriving, but settling is a
+        fact about elapsed time. A reciter who pauses — to breathe, to think,
+        to find their place — stops producing windows, and without this the
+        last words they said would sit uncoloured until they either resumed
+        or stopped listening altogether. Cheap to call often: _repaint()
+        pushes only the words whose colour actually changed.
+        """
+        if self._scored:
+            self._repaint()
 
     def finalize(self) -> str:
         """Commit verdicts still waiting for a better look.
@@ -681,6 +961,13 @@ class RecitationTracker:
                 self._commit(w, _quality(w, at_edge=True))
                 log.count("edge_word_committed_on_stop")
         self._withheld.clear()
+        # Every word is settled now, by definition: the audio has stopped, so
+        # the window that would have revised one is never built. Without this
+        # a session that ends within SETTLE_SECONDS of its last mistake would
+        # leave that mistake uncoloured — the page would go quiet holding a
+        # verdict it had already reached.
+        self._session_over = True
+        self._repaint()
         return self._render()
 
     def verdicts(self) -> list[dict]:
@@ -738,7 +1025,7 @@ class RecitationTracker:
 
     @staticmethod
     def _status(word) -> bool | None:
-        """Mushaf colour for a verdict: True green, False red, None amber."""
+        """Mushaf verdict: True plain ink, False red, None amber."""
         if word.is_gap_filled or not word.recited:
             return None
         return bool(word.is_correct)
@@ -806,6 +1093,11 @@ class RecitationTracker:
             return f'<span style="color:{CORRECT_COLOR};">{w.recited}</span>'
         if status is False:
             return f'<span style="color:{INCORRECT_COLOR};">{w.recited}</span>'
+        if status is PENDING:
+            # Heard, undecided. Shown as recited and left uncoloured, the
+            # same thing the page does — never underlined as missed, which
+            # would report a word the reciter said as one they did not.
+            return f'<span style="color:{TEXT_PRIMARY};">{w.recited}</span>'
         return (
             f'<span style="color:{MISSED_COLOR}; text-decoration:underline;">'
             f'{w.reference}</span>'

@@ -158,6 +158,75 @@ class TrackingAnchorTests(unittest.TestCase):
         )
 
 
+class WrongWordNotASkipTests(unittest.TestCase):
+    """A wrong word that exists further on must not be read as a skip.
+
+    The aligner will walk past any number of reference words to reach one
+    that matches. In ordinary prose that is right. In the Quran, where a
+    small vocabulary repeats, the word a reciter gets wrong is very often a
+    word that occurs again a line or two down — so the aligner would rather
+    jump to it than call it a mistake, and takes the pointer with it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+
+    def test_a_word_from_the_next_ayah_is_charged_where_it_was_said(self):
+        """74:22 ثُمَّ عَبَسَ وَبَسَرَ, 74:23 ثُمَّ أَدْبَرَ وَاسْتَكْبَرَ.
+
+        Reciting "ثم عبس واستكبر" used to step over وَبَسَرَ, ثُمَّ and أَدْبَرَ
+        to land on وَاسْتَكْبَرَ: the one real mistake scored correct, three
+        untouched words scored as skipped, and the pointer left an ayah ahead
+        of the reciter, where nothing they said next could match.
+        """
+        match = self.index.track("ثُمَّ عَبَسَ وَاسْتَكْبَرَ", 74, 21, 1)
+        self.assertIsNotNone(match)
+        heard = [w for w in match.words if w.recited]
+        self.assertEqual(len(heard), 3, "three words were recited")
+
+        last = heard[-1]
+        self.assertEqual((last.surah_id, last.ayah_id, last.reference_index),
+                         (74, 22, 2),
+                         "the pointer jumped to the next ayah")
+        self.assertEqual(last.reference, "وَبَسَرَ")
+        self.assertFalse(last.is_correct, "the mistake was scored correct")
+
+        self.assertNotIn(
+            (74, 23), {(w.surah_id, w.ayah_id) for w in match.words},
+            "74:23 was dragged in by a word recited in 74:22")
+
+    def test_the_same_phrase_recited_correctly_is_still_correct(self):
+        match = self.index.track("ثُمَّ عَبَسَ وَبَسَرَ", 74, 21, 1)
+        self.assertIsNotNone(match)
+        self.assertTrue(all(w.is_correct for w in match.words if w.recited))
+        self.assertEqual([w.reference_index for w in match.words], [0, 1, 2])
+
+    def test_a_real_skip_is_still_believed(self):
+        """Jumping 74:22 -> 74:24 and reciting on must not be rewritten as
+        three mistakes. The evidence is the resumption: several reference
+        words in a row line up after the gap, which coincidence does not do.
+        """
+        match = self.index.track(
+            "ثُمَّ عَبَسَ وَبَسَرَ فَقَالَ إِنْ هَٰذَا إِلَّا سِحْرٌ", 74, 22, 0)
+        self.assertIsNotNone(match)
+        scored = {(w.ayah_id, w.reference_index): w for w in match.words
+                  if w.recited}
+        self.assertIn((24, 0), scored,
+                      "the reciter's resumption in 74:24 was not followed")
+        self.assertTrue(scored[(24, 0)].is_correct)
+
+    def test_dropping_a_single_word_is_still_a_skip(self):
+        """A run of one skipped word is always believed — dropping a word is
+        the commonest thing a reciter does, and the alignment barely moves."""
+        # 1:2 الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ, with رَبِّ left out.
+        match = self.index.track("الْحَمْدُ لِلَّهِ الْعَالَمِينَ", 1, 1, 3)
+        self.assertIsNotNone(match)
+        last = [w for w in match.words if w.recited][-1]
+        self.assertEqual(last.reference, "الْعَالَمِينَ")
+        self.assertTrue(last.is_correct)
+
+
 class MatchForModeTests(unittest.TestCase):
     """The seam between the dispatcher and the index.
 

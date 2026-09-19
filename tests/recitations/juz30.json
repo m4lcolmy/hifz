@@ -1,0 +1,551 @@
+{
+  "version": 1,
+  "seed": 1446,
+  "run_gap_ms": 350,
+  "generated_by": "scripts/fetch_recitations.py",
+  "source": {
+    "name": "everyayah",
+    "base_url": "https://everyayah.com/data",
+    "terms_url": "https://everyayah.com/",
+    "terms": "everyayah.com republishes recordings gathered from several sources and offers them for free download; it publishes no single machine-readable licence, and the rights in each reciter's recording remain with whoever made it. Read the site before doing anything with the audio beyond running this benchmark locally. Nothing fetched here is redistributed: the audio is gitignored and only this manifest — ayah numbers, which is to say facts — is committed."
+  },
+  "reciters": [
+    {
+      "id": "Husary_Muallim_128kbps",
+      "label": "Al-Husary (muʿallim)",
+      "pace": "very slow teaching pace, every madd stretched to its full count"
+    },
+    {
+      "id": "Abdul_Basit_Murattal_64kbps",
+      "label": "Abdul Basit (murattal)",
+      "pace": "slow murattal, long pauses between ayahs"
+    },
+    {
+      "id": "Husary_64kbps",
+      "label": "Al-Husary (murattal)",
+      "pace": "measured murattal — the closest to the hand-made corpus"
+    },
+    {
+      "id": "Alafasy_64kbps",
+      "label": "Mishary Alafasy",
+      "pace": "medium, the voice most people have heard"
+    },
+    {
+      "id": "Abdurrahmaan_As-Sudais_192kbps",
+      "label": "As-Sudais",
+      "pace": "fast, and the hardest on a 3-second window"
+    }
+  ],
+  "strata": [
+    {
+      "name": "surah-from-basmala",
+      "target": 9,
+      "why": "a session as it is actually opened: cold, and on the one phrase discovery is guaranteed to refuse",
+      "chosen": 9
+    },
+    {
+      "name": "surah-from-ayah-1",
+      "target": 13,
+      "why": "the same whole surah begun at its first word — the three slowest voices, whose source has no basmala file",
+      "chosen": 13
+    }
+  ],
+  "cases": [
+    {
+      "id": "surah-from-basmala/Alafasy_64kbps/094_001-008",
+      "stratum": "surah-from-basmala",
+      "reciter": "Alafasy_64kbps",
+      "surah": 94,
+      "ayahs": [
+        1,
+        8
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "words": 27,
+      "file": "Alafasy_64kbps/094_001-008_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Abdurrahmaan_As-Sudais_192kbps/095_001-008",
+      "stratum": "surah-from-basmala",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 95,
+      "ayahs": [
+        1,
+        8
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "words": 34,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/095_001-008_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Alafasy_64kbps/099_001-008",
+      "stratum": "surah-from-basmala",
+      "reciter": "Alafasy_64kbps",
+      "surah": 99,
+      "ayahs": [
+        1,
+        8
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "words": 36,
+      "file": "Alafasy_64kbps/099_001-008_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Abdurrahmaan_As-Sudais_192kbps/100_001-011",
+      "stratum": "surah-from-basmala",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 100,
+      "ayahs": [
+        1,
+        11
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "words": 40,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/100_001-011_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Alafasy_64kbps/104_001-009",
+      "stratum": "surah-from-basmala",
+      "reciter": "Alafasy_64kbps",
+      "surah": 104,
+      "ayahs": [
+        1,
+        9
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "words": 33,
+      "file": "Alafasy_64kbps/104_001-009_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Abdurrahmaan_As-Sudais_192kbps/105_001-005",
+      "stratum": "surah-from-basmala",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 105,
+      "ayahs": [
+        1,
+        5
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "words": 23,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/105_001-005_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Alafasy_64kbps/109_001-006",
+      "stratum": "surah-from-basmala",
+      "reciter": "Alafasy_64kbps",
+      "surah": 109,
+      "ayahs": [
+        1,
+        6
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "words": 26,
+      "file": "Alafasy_64kbps/109_001-006_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Abdurrahmaan_As-Sudais_192kbps/110_001-003",
+      "stratum": "surah-from-basmala",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 110,
+      "ayahs": [
+        1,
+        3
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "words": 19,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/110_001-003_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-basmala/Alafasy_64kbps/114_001-006",
+      "stratum": "surah-from-basmala",
+      "reciter": "Alafasy_64kbps",
+      "surah": 114,
+      "ayahs": [
+        1,
+        6
+      ],
+      "parts": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "words": 20,
+      "file": "Alafasy_64kbps/114_001-006_basmala.flac",
+      "note": "whole surah, basmala first"
+    },
+    {
+      "id": "surah-from-ayah-1/Abdul_Basit_Murattal_64kbps/093_001-011",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 93,
+      "ayahs": [
+        1,
+        11
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "words": 40,
+      "file": "Abdul_Basit_Murattal_64kbps/093_001-011.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_Muallim_128kbps/096_001-019",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 96,
+      "ayahs": [
+        1,
+        19
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "words": 72,
+      "file": "Husary_Muallim_128kbps/096_001-019.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_64kbps/097_001-005",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_64kbps",
+      "surah": 97,
+      "ayahs": [
+        1,
+        5
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "words": 30,
+      "file": "Husary_64kbps/097_001-005.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Abdul_Basit_Murattal_64kbps/098_001-008",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 98,
+      "ayahs": [
+        1,
+        8
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "words": 94,
+      "file": "Abdul_Basit_Murattal_64kbps/098_001-008.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_Muallim_128kbps/101_001-011",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 101,
+      "ayahs": [
+        1,
+        11
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "words": 36,
+      "file": "Husary_Muallim_128kbps/101_001-011.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_64kbps/102_001-008",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_64kbps",
+      "surah": 102,
+      "ayahs": [
+        1,
+        8
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "words": 28,
+      "file": "Husary_64kbps/102_001-008.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Abdul_Basit_Murattal_64kbps/103_001-003",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 103,
+      "ayahs": [
+        1,
+        3
+      ],
+      "parts": [
+        1,
+        2,
+        3
+      ],
+      "words": 14,
+      "file": "Abdul_Basit_Murattal_64kbps/103_001-003.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_Muallim_128kbps/106_001-004",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 106,
+      "ayahs": [
+        1,
+        4
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "words": 17,
+      "file": "Husary_Muallim_128kbps/106_001-004.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_64kbps/107_001-007",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_64kbps",
+      "surah": 107,
+      "ayahs": [
+        1,
+        7
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "words": 25,
+      "file": "Husary_64kbps/107_001-007.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Abdul_Basit_Murattal_64kbps/108_001-003",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 108,
+      "ayahs": [
+        1,
+        3
+      ],
+      "parts": [
+        1,
+        2,
+        3
+      ],
+      "words": 10,
+      "file": "Abdul_Basit_Murattal_64kbps/108_001-003.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_Muallim_128kbps/111_001-005",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 111,
+      "ayahs": [
+        1,
+        5
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "words": 23,
+      "file": "Husary_Muallim_128kbps/111_001-005.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Husary_64kbps/112_001-004",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Husary_64kbps",
+      "surah": 112,
+      "ayahs": [
+        1,
+        4
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "words": 15,
+      "file": "Husary_64kbps/112_001-004.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    },
+    {
+      "id": "surah-from-ayah-1/Abdul_Basit_Murattal_64kbps/113_001-005",
+      "stratum": "surah-from-ayah-1",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 113,
+      "ayahs": [
+        1,
+        5
+      ],
+      "parts": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "words": 23,
+      "file": "Abdul_Basit_Murattal_64kbps/113_001-005.flac",
+      "note": "whole surah, from ayah 1 — this reciter has no basmala file at the source"
+    }
+  ]
+}

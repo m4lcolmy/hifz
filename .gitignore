@@ -186,3 +186,6 @@ models-small/
 # with `python scripts/fetch_recitations.py --agree`.
 tests/recitations/*
 !tests/recitations/manifest.json
+# The juz 30 corpus — whole short surahs, each from its basmala. A second
+# definition in the same format; the audio is gitignored exactly the same way.
+!tests/recitations/juz30.json

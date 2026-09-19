@@ -19,7 +19,7 @@ from src.config import (
     TRACKING_WINDOW, TRACKING_MAX_GAP, TRACKING_MIN_MATCHES,
     TRACKING_WEAK_EVIDENCE, TRACKING_WEAK_MAX_DRIFT,
     DISCOVERY_SOLO_AYAH, PRELOCK_LOOKBACK_WORDS, PRELOCK_MIN_MATCHES,
-    ECHO_LOOKBACK,
+    ECHO_LOOKBACK, SKIP_RESUME_WORDS,
 )
 
 
@@ -86,6 +86,47 @@ def _boundary_span(trans_norm: list[str], ref_norm: list[str],
             if n >= 2 and joined == whole:
                 return i1 + n, j1 + 1
     return None
+
+
+def _charge_lone_resumes(opcodes: list, min_resume: int) -> list:
+    """Make the aligner pay for the reference words it walks past.
+
+    `difflib` will skip any number of reference words to reach one that
+    matches, because matching more characters is all it is trying to do. In
+    ordinary text that is the right instinct. In the Quran it is not: ayahs
+    are built from a small, repeating vocabulary, so the wrong word a reciter
+    says is very often a word that occurs again a line or two down — and the
+    aligner would rather jump to it than call it a mistake.
+
+    74:22 ثُمَّ عَبَسَ وَبَسَرَ, 74:23 ثُمَّ أَدْبَرَ وَاسْتَكْبَرَ. Recite
+    "ثم عبس واستكبر" and it steps over وَبَسَرَ, ثُمَّ and أَدْبَرَ to reach
+    وَاسْتَكْبَرَ, which costs three inventions and a lie: the mistake is
+    scored correct, three words nobody touched are scored skipped, and the
+    pointer lands an ayah ahead of the reciter.
+
+    So a skipped run of two or more is believed only when `min_resume`
+    reference words line up consecutively after it. A single one is
+    coincidence, and the skip is rewritten as a substitution — the heard word
+    charged against the reference word that was actually due. A run of one is
+    always believed: dropping a word is the commonest thing a reciter does,
+    and nothing is claimed by letting the alignment shift by one.
+    """
+    out = []
+    i = 0
+    while i < len(opcodes):
+        op, i1, i2, j1, j2 = opcodes[i]
+        if op == "insert" and j2 - j1 >= 2 and i + 1 < len(opcodes):
+            next_op, _ni1, ni2, _nj1, nj2 = opcodes[i + 1]
+            if next_op == "equal" and ni2 - i2 < min_resume:
+                # The insert consumes no heard words, so its i-range is the
+                # empty span the following equal starts from: the two are
+                # adjacent on both sides and fuse into one substitution.
+                out.append(("replace", i1, ni2, j1, nj2))
+                i += 2
+                continue
+        out.append((op, i1, i2, j1, j2))
+        i += 1
+    return out
 
 
 def _same_word(heard: str, expected: str) -> bool:
@@ -193,6 +234,22 @@ class QuranIndex:
                 self._ngram_index[key].append(i)
 
     # ── Discovery Mode ─────────────────────────────────────────────────
+
+    def surah_label(self, surah_id: int) -> str:
+        """The surah's name in Latin letters, for a left-to-right caption.
+
+        The status bar is set left to right, and an Arabic name placed next
+        to an ayah number comes out reordered by the bidi algorithm — النساء
+        4:12 reads with the number on the wrong side of the name. The
+        transliteration has no direction of its own to fight with.
+
+        Falls back to the Arabic name if the JSON has no transliteration, and
+        to the bare number if there is no such surah.
+        """
+        if not 1 <= surah_id <= len(self._surahs):
+            return str(surah_id)
+        surah = self._surahs[surah_id - 1]
+        return surah.get("transliteration") or surah.get("name") or str(surah_id)
 
     def is_solo_ayah(self, word: str) -> bool:
         """Is this one word an entire ayah, and found nowhere else?
@@ -437,6 +494,19 @@ class QuranIndex:
 
         return self._build_match(best_start, trans_words)
 
+    def last_ayah(self, surah_id: int) -> int | None:
+        """The number of the surah's final ayah, or None if there is no such
+        surah.
+
+        Which is all it takes to label a recording of a whole surah: the
+        range is 1 to this, so a file named after its surah cannot carry a
+        wrong ayah range, because it carries none.
+        """
+        if not 1 <= surah_id <= len(self._surahs):
+            return None
+        verses = self._surahs[surah_id - 1]["verses"]
+        return verses[-1]["id"] if verses else None
+
     def words_in_range(self, surah: int, first_ayah: int, last_ayah: int) -> int:
         """How many words a stretch of recitation contains.
 
@@ -573,7 +643,8 @@ class QuranIndex:
 
         matcher = difflib.SequenceMatcher(None, trans_norm, ref_norm)
         results: list[WordResult] = []
-        opcodes = list(matcher.get_opcodes())
+        opcodes = _charge_lone_resumes(
+            list(matcher.get_opcodes()), SKIP_RESUME_WORDS)
 
         for op, i1, i2, j1, j2 in opcodes:
             if op == "equal":
