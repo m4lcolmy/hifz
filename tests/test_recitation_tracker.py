@@ -560,6 +560,32 @@ class BeforeTheLockTests(unittest.TestCase):
         self.assertIs(final.get((2, 1, 0)), True,
                       "الم was recited, transcribed cleanly, and never shown")
 
+    def test_the_lock_word_itself_can_be_recovered(self):
+        """The lock word is the one most likely to need this.
+
+        Discovery locks on the first phrase it can tell apart, and that
+        phrase's own opening word sits at the window edge where it was
+        clipped. 4:1:0 يَاأَيُّهَا was heard as وَيُّهَا exactly once, withheld,
+        and never scored — while a chunk from a second earlier had it
+        perfectly and had been refused only because three surahs open
+        يَاأَيُّهَا النَّاسُ اتَّقُوا رَبَّكُمْ.
+
+        Transcriptions verbatim from logs/hifz-20260919-131925.log.
+        """
+        mushaf = DummyMushafView()
+        tracker = self._tracker(mushaf)
+
+        self._recite(tracker,
+                     "يَا أَيُّهَا النَّاسُ اتَّقُوا رَبِّكُمْ",        # 4:1, 22:1, 31:33
+                     "وَيُّهَا النَّاسُ اتَّقُوا رَبِّكُمُ الَّذِي")    # locks at 4:1:0
+        tracker.finalize()
+
+        self.assertEqual((tracker.last_surah, tracker.last_ayah), (4, 1))
+        self.assertIs(
+            mushaf.final().get((4, 1, 0)), True,
+            "the word discovery locked on was never given a verdict",
+        )
+
     def test_the_re_match_does_not_reach_into_the_surah_before(self):
         """Al-Fatiha sits immediately before Al-Baqarah in the flat text.
 

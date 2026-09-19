@@ -333,8 +333,13 @@ class QuranIndex:
 
         best = max(blocks, key=lambda b: (b.size, -b.a))
         best_start = max(0, window_start + best.b - best.a)
-        if best_start >= anchor:
-            return None                              # nothing new before the lock
+        # `> anchor`, not `>= anchor`: the lock word itself is usually the one
+        # that needs this most. Discovery locks on the first phrase it can tell
+        # apart, and that phrase's own opening word is at the window edge where
+        # it was clipped — 4:1:0 يَاأَيُّهَا was heard as وَيُّهَا exactly once
+        # and withheld, while a chunk from a second earlier had it perfectly.
+        if best_start > anchor:
+            return None                              # nothing at or before the lock
         if self._flat[best_start][2] != surah:
             return None                              # do not reach into the surah before
 
