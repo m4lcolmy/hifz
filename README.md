@@ -141,19 +141,57 @@ the ground truth written in each filename. It also simulates the real-time
 drop behaviour, so its numbers reflect the live app rather than an idealised
 offline run.
 
-The number to watch is the **false alarm rate**: words you recited correctly
-that the app painted red. Recordings marked `no mistake` should produce none,
-and the two with a deliberate mistake must keep catching it — the report says
-so explicitly, so a change that "improves" the false alarm rate by quietly
-missing real mistakes cannot pass unnoticed.
+Three numbers, and they have to be read together:
 
-Current: **4.6% false alarms, 2/2 deliberate mistakes caught**, down from
-38.6% and 1/2.
+```
+COVERAGE          154/181 = 85.1% of recited words given a verdict
+FALSE ALARM RATE  1/154 = 0.6%
+DELIBERATE MISTAKES  2/2 caught
+```
 
-### Adding your own recordings
+**Coverage first.** The false alarm rate is a fraction of the words the app
+*scored*, so a word it never showed at all costs nothing — which means a
+change that quietly shows fewer words scores better. That is not a
+hypothetical: `surah mutaffifin 1-19` reported a clean 0% while never scoring
+83:15, 83:16 or 83:17, 24 of the recording's 93 words. The per-recording
+`unseen` column says where the gaps are.
 
-Record yourself, name the file after what you recited, and note any deliberate
-mistake:
+The **false alarm rate** is words you recited correctly that the app painted
+red. The two recordings with a deliberate mistake must keep catching it, so a
+change that "improves" the rate by quietly missing real mistakes cannot pass
+unnoticed.
+
+Current: **85.1% coverage, 0.6% false alarms, 2/2 caught** — down from 38.6%
+false alarms and 1/2 caught.
+
+### Recording your own cases
+
+The easy way — every session becomes test data:
+
+```bash
+./run.sh --record
+```
+
+On stop this writes `logs/session-<timestamp>/`: the whole session as
+`full.flac`, one clip per ayah the tracker entered, and a `manifest.json` with
+the labels, the time spans, every transcription and every verdict.
+
+```bash
+python scripts/benchmark_recordings.py --from-session logs/session-20260919-131925/
+```
+
+Clips are cut on the tracker's **own** ayah transitions, so each is labelled
+with the ayah the app *believed* it was in. Where that belief was wrong the
+clip is worth more, not less: it is the failing case, already isolated and
+already carrying the wrong answer. Check a clip before trusting its label,
+then move it into `tests/records/` with a proper name.
+
+The audio recited before discovery works out where you are is kept as its own
+clip. That is where discovery struggles, and no hand-made recording contains
+it, because a person recording a test case starts cleanly.
+
+The manual way — record yourself, name the file after what you recited, and
+note any deliberate mistake:
 
 ```
 surah muddathir 8-10 no mistake.flac
@@ -161,7 +199,9 @@ surah baqarah ayahs 6-7 mistake at the and used ف letter instead of و (وله�
 ```
 
 Then add a line to `EXPECTATIONS` in `scripts/benchmark_recordings.py` with
-the surah, the ayah range, and the position of any deliberate mistake.
+the surah, the ayah range, and the position of any deliberate mistake. Mark it
+`partial=True` if the recording covers only part of the ayah range, so the
+words you never recited are not counted against coverage.
 
 ---
 
@@ -207,6 +247,7 @@ src/
   audio/
     capture.py              microphone
     vad.py                  speech detection and windowing
+    recorder.py             --record: session audio cut into benchmark cases
     transcriber.py          Whisper, plus the gates that drop hallucinations
     model_loader.py         loads the model off the UI thread
   ui/
@@ -218,7 +259,7 @@ data/
   qcf_assets/               604 Mushaf pages + fonts
 logs/                       one log per run, newest 20 kept
 scripts/
-  benchmark_recordings.py   end-to-end benchmark
+  benchmark_recordings.py   end-to-end benchmark (--from-session for captures)
   test_search_algorithm.py  search engine evaluation
 ```
 

@@ -21,6 +21,7 @@ Run:
 """
 
 import argparse
+import json
 import re
 import sys
 import time
@@ -56,6 +57,11 @@ class Expectation:
     ayahs: tuple[int, int]       # inclusive range
     mistakes: tuple = ()         # (surah, ayah, word_index) of deliberate errors
     note: str = ""
+    # True when the recording covers only part of the ayah range — starting
+    # mid-ayah, say. Coverage cannot be judged against words that were never
+    # recited, so such a case is left out of the coverage total rather than
+    # counted as words the app failed to show.
+    partial: bool = False
 
     @property
     def mistake_count(self) -> int:
@@ -71,7 +77,8 @@ EXPECTATIONS = [
     Expectation("kawthar 1", 108, (1, 1), (), "3-word ayah, cold start"),
     Expectation("muddathir 8-10", 74, (8, 10), (), ""),
     Expectation("mutaffifin 1-19", 83, (1, 19), (), "long, pauses between ayahs"),
-    Expectation("nisa 11 from the middle", 4, (11, 11), (), "starts mid-ayah"),
+    Expectation("nisa 11 from the middle", 4, (11, 11), (), "starts mid-ayah",
+                partial=True),
     Expectation("qadr 1-2", 97, (1, 2), (), ""),
     Expectation("qafirun with auzu basmala", 109, (1, 1), (), "isti'adha + basmala first"),
 ]
@@ -155,10 +162,26 @@ class Result:
     found_position: bool = False
     transcripts: list[str] = field(default_factory=list)
     wrong_words: list[str] = field(default_factory=list)
+    expected_words: int = 0     # words the recited range actually contains
 
     @property
     def scored(self) -> int:
         return self.ok + self.wrong
+
+    @property
+    def unshown(self) -> int:
+        """Words of the recitation that never got a verdict at all.
+
+        The false alarm rate is a fraction of the words scored, so a word
+        never shown costs nothing — and a change that quietly shows fewer
+        words scores *better*. Al-Mutaffifin 1-19 read as a clean 0% while
+        24 of its 93 words, including all of 83:15-17, never appeared.
+        Coverage has to be reported next to the rate or the rate can be
+        improved by doing less.
+        """
+        if self.expectation.partial:
+            return 0        # most of the range was never recited
+        return max(0, self.expected_words - self.ok - self.wrong - self.missed)
 
     flagged: set = field(default_factory=set)   # positions painted red
 
@@ -181,6 +204,7 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
                   verbose: bool = False) -> Result:
     """Push one recording through the pipeline, simulating real-time drops."""
     res = Result(name=path.name, expectation=exp)
+    res.expected_words = index.words_in_range(exp.surah, *exp.ayahs)
 
     pcm = load_pcm16(path)
     res.audio_s = len(pcm) / 2 / SAMPLE_RATE
@@ -200,10 +224,10 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
         block = pcm[offset:offset + feed_bytes]
         audio_t = (offset + len(block)) / 2 / SAMPLE_RATE
         for window in buffer.feed(block):
-            pending.append((audio_t, window))
+            pending.append((audio_t, window.data))
     leftover = buffer.flush()
     if leftover:
-        pending.append((res.audio_s, leftover))
+        pending.append((res.audio_s, leftover.data))
 
     # Virtual clock: the model is busy while it transcribes, and any window
     # that arrived during that time is stale — the live LIFO queue keeps only
@@ -303,7 +327,7 @@ def report(results: list[Result]):
     print("  RESULTS")
     print("=" * 96)
     print(f"  {'recording':<40} {'position':>9} {'ok':>5} {'caught':>7} "
-          f"{'miss':>5} {'false':>6} {'drop%':>6}")
+          f"{'miss':>5} {'false':>6} {'unseen':>7} {'drop%':>6}")
     print("  " + "-" * 92)
 
     for r in results:
@@ -313,11 +337,13 @@ def report(results: list[Result]):
         flag = "  <-- FALSE ALARMS" if r.false_alarms else ""
         if r.expectation.mistakes and r.caught < r.expectation.mistake_count:
             flag += "  <-- MISSED A REAL MISTAKE"
+        if r.unshown:
+            flag += f"  <-- {r.unshown} WORD(S) NEVER SHOWN"
         name = r.name[:38].replace(".flac", "")
         caught = (f"{r.caught}/{r.expectation.mistake_count}"
                   if r.expectation.mistakes else "-")
         print(f"  {name:<40} {pos:>9} {r.ok:5} {caught:>7} {r.missed:5} "
-              f"{r.false_alarms:6} {drop:5.0f}%{flag}")
+              f"{r.false_alarms:6} {r.unshown:7} {drop:5.0f}%{flag}")
 
     print("  " + "-" * 92)
 
@@ -350,9 +376,19 @@ def report(results: list[Result]):
     print(f"  position found          {found}/{len(results)} recordings")
     print(f"  words scored            {total_scored}  (ok={total_ok} wrong={total_wrong} "
           f"missed={total_missed})")
+    total_expected = sum(r.expected_words for r in results
+                         if not r.expectation.partial)
+    total_unshown = sum(r.unshown for r in results)
+    if total_expected:
+        seen = total_expected - total_unshown
+        print(f"  COVERAGE                {seen}/{total_expected} = "
+              f"{100 * seen / total_expected:.1f}% of recited words given a verdict"
+              f"   <-- read this first")
     if total_scored:
         print(f"  FALSE ALARM RATE        {total_false}/{total_scored} = "
               f"{100 * total_false / total_scored:.1f}%   <-- the number to drive down")
+        print( "                          (a fraction of words SCORED — showing "
+               "fewer words flatters it, so coverage must hold)")
     print(f"  DELIBERATE MISTAKES     {caught_mistakes}/{expected_mistakes} caught"
           f"   <-- must stay at {expected_mistakes}/{expected_mistakes}")
     if all_asr:
@@ -366,19 +402,69 @@ def report(results: list[Result]):
     print("=" * 96)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Cases captured from a live session
+# ═══════════════════════════════════════════════════════════════════════
+
+def cases_from_session(directory: Path) -> list[tuple[Path, Expectation]]:
+    """Read a `./run.sh --record` directory as benchmark cases.
+
+    The labels are what the app *believed* at the time, not verified ground
+    truth, so a case built this way inherits any mistake the app made. That is
+    the point: a clip the app labelled wrongly is a failing case that has
+    already been isolated and already carries the wrong answer, which is more
+    than a hand-recorded file ever gives you. Check a clip before trusting it,
+    then move it into tests/records/ with a proper name.
+
+    The before-lock clip is skipped — it has no ayah to be scored against.
+    """
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        raise SystemExit(f"no manifest.json in {directory}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    cases: list[tuple[Path, Expectation]] = []
+
+    for clip in manifest.get("clips", ()):
+        if clip.get("surah") is None:
+            continue
+        path = directory / clip["file"]
+        if not path.exists():
+            continue
+        wrong = tuple(
+            (v["surah"], v["ayah"], v["word"])
+            for v in clip.get("verdicts", ())
+            if v.get("verdict") == "wrong"
+        )
+        cases.append((path, Expectation(
+            pattern=clip["file"],
+            surah=clip["surah"],
+            ayahs=(clip["ayah"], clip["ayah"]),
+            # What the app called a mistake last time. Replaying should
+            # reproduce it; a difference is the thing worth looking at.
+            mistakes=wrong,
+            note=f"from {directory.name}",
+        )))
+    return cases
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="substring filter on the recording name")
     ap.add_argument("--verbose", action="store_true", help="print every transcript")
     ap.add_argument("--debug-log", help="write a full session log to this path")
     ap.add_argument("--model", default=MODEL_DIR, help="model directory to benchmark")
+    ap.add_argument(
+        "--from-session", type=Path, metavar="DIR",
+        help="score a ./run.sh --record directory instead of tests/records/",
+    )
     args = ap.parse_args()
 
     if args.debug_log:
         from src.core.debug import log as debug_log
         debug_log.enable(args.debug_log)
 
-    if not RECORDS_DIR.exists():
+    if args.from_session is None and not RECORDS_DIR.exists():
         print(f"No recordings at {RECORDS_DIR}")
         return 1
 
@@ -396,14 +482,24 @@ def main():
         local_files_only=True,
     )
 
+    if args.from_session is not None:
+        cases = cases_from_session(args.from_session)
+        if not cases:
+            print(f"  no labelled clips in {args.from_session}")
+            return 1
+        print(f"  {len(cases)} clip(s) from {args.from_session.name}\n")
+    else:
+        cases = []
+        for exp in EXPECTATIONS:
+            matches = [p for p in sorted(RECORDS_DIR.glob("*.flac"))
+                       if exp.pattern in p.name]
+            if not matches:
+                print(f"  (no file for '{exp.pattern}')")
+                continue
+            cases.append((matches[0], exp))
+
     results = []
-    for exp in EXPECTATIONS:
-        matches = [p for p in sorted(RECORDS_DIR.glob("*.flac"))
-                   if exp.pattern in p.name]
-        if not matches:
-            print(f"  (no file for '{exp.pattern}')")
-            continue
-        path = matches[0]
+    for path, exp in cases:
         if args.only and args.only not in path.name:
             continue
 

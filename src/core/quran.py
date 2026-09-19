@@ -345,6 +345,18 @@ class QuranIndex:
 
         return self._build_match(best_start, trans_words)
 
+    def words_in_range(self, surah: int, first_ayah: int, last_ayah: int) -> int:
+        """How many words a stretch of recitation contains.
+
+        The denominator the benchmark was missing. A false alarm rate counted
+        over the words that happened to get a verdict says nothing about the
+        words that never did, and those are the more serious failure.
+        """
+        return sum(
+            1 for _n, _w, s_id, a_id, _i in self._flat
+            if s_id == surah and first_ayah <= a_id <= last_ayah
+        )
+
     def words_between(self, start: tuple[int, int, int], end: tuple[int, int, int],
                       limit: int = 40) -> list[tuple[int, int, int, str]]:
         """Reference words strictly between two positions, in order.

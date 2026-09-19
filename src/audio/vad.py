@@ -5,6 +5,8 @@ Feed raw 16 kHz Int16 PCM bytes via feed(); sliding windows are returned
 continuously.
 """
 
+from dataclasses import dataclass
+
 import webrtcvad
 
 from src.config import (
@@ -24,6 +26,28 @@ def default_step_ms() -> int:
     return WINDOW_STEP_MS if device == "cuda" else WINDOW_STEP_MS_CPU
 
 
+@dataclass(frozen=True)
+class Window:
+    """One window of audio, and where it sat in the stream.
+
+    The offsets are what lets a session be cut back up afterwards: a verdict
+    can be traced to the exact audio that produced it, which is the whole
+    point of recording a session as test data.
+    """
+
+    data: bytes
+    start_sample: int
+    end_sample: int
+
+    @property
+    def start_s(self) -> float:
+        return self.start_sample / SAMPLE_RATE
+
+    @property
+    def end_s(self) -> float:
+        return self.end_sample / SAMPLE_RATE
+
+
 class SlidingWindowBuffer:
     """Accumulates PCM frames and emits overlapping sliding windows continuously."""
 
@@ -37,11 +61,13 @@ class SlidingWindowBuffer:
         self.window_bytes = (SAMPLE_RATE * window_ms // 1000) * 2
         self.step_bytes = (SAMPLE_RATE * step_ms // 1000) * 2
         self._buffer = bytearray()
+        # Absolute byte offset of _buffer[0] within the whole stream.
+        self._consumed = 0
 
-    def feed(self, pcm: bytes) -> list[bytes]:
+    def feed(self, pcm: bytes) -> list[Window]:
         """Feed raw PCM bytes. Returns list of sliding windows if enough data accumulated."""
         self._buffer.extend(pcm)
-        chunks: list[bytes] = []
+        chunks: list[Window] = []
 
         while len(self._buffer) >= self.window_bytes:
             window_data = bytes(self._buffer[:self.window_bytes])
@@ -55,14 +81,19 @@ class SlidingWindowBuffer:
                     break
 
             if has_speech:
-                chunks.append(window_data)
-            
+                chunks.append(Window(
+                    window_data,
+                    self._consumed // 2,
+                    (self._consumed + self.window_bytes) // 2,
+                ))
+
             # Slide the window forward
             del self._buffer[:self.step_bytes]
+            self._consumed += self.step_bytes
 
         return chunks
 
-    def flush(self) -> bytes | None:
+    def flush(self) -> "Window | None":
         """Return any remaining buffer if it has speech."""
         if len(self._buffer) > 0:
             has_speech = False
@@ -73,13 +104,20 @@ class SlidingWindowBuffer:
                     break
             
             if has_speech:
-                res = bytes(self._buffer)
+                res = Window(
+                    bytes(self._buffer),
+                    self._consumed // 2,
+                    (self._consumed + len(self._buffer)) // 2,
+                )
+                self._consumed += len(self._buffer)
                 self._buffer.clear()
                 return res
-            
+
+        self._consumed += len(self._buffer)
         self._buffer.clear()
         return None
 
     def reset(self):
         """Discard all state."""
         self._buffer.clear()
+        self._consumed = 0

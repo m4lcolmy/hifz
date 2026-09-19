@@ -166,6 +166,9 @@ class TranscriberWorker(QObject):
                 "text": text,
                 "match": decision.match,
                 "mode": mode,
+                # Where this window sat in the session's audio, so a recorded
+                # session can cut the audio at the verdicts it produced.
+                "window": data.get("window"),
                 # False when the chunk was too short to even try — the tracker
                 # must not count those towards its re-discovery fallback.
                 "attempted": decision.attempted,

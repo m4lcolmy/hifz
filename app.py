@@ -41,7 +41,14 @@ def main():
     app.setFont(app_font())
     app.setStyleSheet(STYLESHEET)
 
-    window = MainWindow()
+    # --record keeps the session's audio and cuts it into benchmark cases on
+    # stop. Every bug fixed so far was found by reciting and then could not be
+    # turned into a test, because the audio was gone.
+    record = "--record" in sys.argv
+    if record:
+        print("Recording this session → logs/session-*/")
+
+    window = MainWindow(record=record)
     window.show()
     sys.exit(app.exec())
 

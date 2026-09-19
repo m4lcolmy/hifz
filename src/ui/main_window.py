@@ -22,6 +22,7 @@ from src.ui.mushaf_view import MushafView
 from src.ui.recitation import RecitationTracker
 from src.audio.capture import default_audio_format, get_input_device
 from src.audio.vad import SlidingWindowBuffer
+from src.audio.recorder import SessionRecorder
 from src.audio import ModelLoaderThread, TranscriberWorker
 from src.core.quran import QuranIndex
 from src.core.debug import log
@@ -34,8 +35,11 @@ class MainWindow(QMainWindow):
     # Signals
     _chunk_ready = pyqtSignal(object)
 
-    def __init__(self):
+    def __init__(self, record: bool = False):
         super().__init__()
+        # --record: keep the audio and cut it up into benchmark cases on stop.
+        self._record = record
+        self._recorder: SessionRecorder | None = None
         self.setWindowTitle("Hifz — Quran Recitation Trainer")
         self.setMinimumSize(800, 480)
         self.resize(1000, 800) 
@@ -218,6 +222,7 @@ class MainWindow(QMainWindow):
         try:
             self._tracker.reset()
             self._chunk_detector = SlidingWindowBuffer()
+            self._recorder = self._new_recorder() if self._record else None
             self._audio_source = QAudioSource(device, fmt)
             self._audio_io = self._audio_source.start()
             self._audio_io.readyRead.connect(self._on_audio_data)
@@ -248,7 +253,8 @@ class MainWindow(QMainWindow):
             leftover = self._chunk_detector.flush()
             if leftover:
                 self._chunk_ready.emit({
-                    "audio": leftover,
+                    "audio": leftover.data,
+                    "window": leftover,
                     "mode": self._tracker.mode,
                     "context_surah": self._tracker.last_surah,
                     "context_ayah": self._tracker.last_ayah,
@@ -261,6 +267,19 @@ class MainWindow(QMainWindow):
         html = self._tracker.finalize()
         if html:
             self.output_text.setHtml(html)
+
+        if self._recorder is not None:
+            recorder, self._recorder = self._recorder, None
+            try:
+                where = recorder.finish(self._tracker.verdicts(),
+                                        log.path if log.enabled else None)
+            except Exception as e:                      # never lose a session
+                log.event("ERROR", f"recording failed: {e!r}")
+                where = None
+            if where is not None:
+                print(f"Session recording → {where}")
+                self._set_status(f"Recorded → {where.name}", "idle")
+                return
 
         if log.enabled:
             log.event("SESSION", "listening stopped")
@@ -281,10 +300,13 @@ class MainWindow(QMainWindow):
         if not raw:
             return
 
-        chunks = self._chunk_detector.feed(raw)
-        for chunk in chunks:
+        if self._recorder is not None:
+            self._recorder.feed(raw)
+
+        for window in self._chunk_detector.feed(raw):
             self._chunk_ready.emit({
-                "audio": chunk,
+                "audio": window.data,
+                "window": window,
                 "mode": self._tracker.mode,
                 "context_surah": self._tracker.last_surah,
                 "context_ayah": self._tracker.last_ayah,
@@ -293,9 +315,22 @@ class MainWindow(QMainWindow):
 
     # ── Transcription results ──────────────────────────────────────────
 
+    def _new_recorder(self) -> SessionRecorder:
+        from datetime import datetime
+        from src.config import LOGS_DIR
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return SessionRecorder(LOGS_DIR / f"session-{stamp}")
+
     def _on_result(self, result: dict):
         """Display transcription result with Quran verification coloring."""
         html = self._tracker.on_result(result)
+        if self._recorder is not None:
+            # After on_result, so the clip is labelled with where the tracker
+            # believed it was once this window had been absorbed.
+            self._recorder.note(
+                result.get("window"), self._tracker.last_surah,
+                self._tracker.last_ayah, result.get("text", ""),
+            )
         self.output_text.setHtml(html)
         # Auto-scroll to bottom to show last recited ayah
         self.output_text.verticalScrollBar().setValue(

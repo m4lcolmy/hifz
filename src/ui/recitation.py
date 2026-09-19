@@ -488,6 +488,36 @@ class RecitationTracker:
         self._withheld.clear()
         return self._render()
 
+    def verdicts(self) -> list[dict]:
+        """Every word scored this session, in recitation order.
+
+        The record a session leaves behind: what the app decided, word by
+        word, so the same audio can be replayed later and the decision
+        compared against it rather than re-judged by hand.
+        """
+        out = []
+        for word_id in self._order:
+            entry = self._scored.get(word_id)
+            if entry is None:
+                continue
+            quality, w = entry
+            out.append({
+                "surah": w.surah_id,
+                "ayah": w.ayah_id,
+                "word": w.reference_index,
+                "reference": w.reference,
+                "recited": w.recited,
+                "verdict": ("ok" if self._status(w) is True
+                            else "missed" if self._status(w) is None
+                            else "wrong"),
+                # (heard, rank, whole-word) — how good the evidence was.
+                # A word credited from a clipped edge scores (0, 1, 1), the
+                # same as a gap-fill, and that is the flag to look for when a
+                # clip disagrees with what the app believed.
+                "evidence": list(quality),
+            })
+        return out
+
     @staticmethod
     def _edge_word_ids(match) -> set:
         """Word ids sitting at the start/end of the audio window.

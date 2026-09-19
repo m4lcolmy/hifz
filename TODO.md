@@ -16,16 +16,22 @@ Two numbers must be reported together, always:
 
 | Number | Meaning | Direction |
 |---|---|---|
+| **Coverage** | recited words given any verdict | up |
 | **False alarm rate** | correct words painted red | down |
 | **Deliberate mistakes caught** | real errors still detected | must stay 2/2 |
 
-A change that improves the first by damaging the second is a regression. The
-benchmark prints both for this reason.
+A change that improves one by damaging another is a regression. The benchmark
+prints all three for this reason, coverage first — it is the one that was
+missing, and its absence made every earlier number optimistic.
 
-**Baseline today:** 0.6% false alarms, 2/2 caught, 42 unit tests, 63 search
-cases. The benchmark is still short, clean and forward-only — every bug in
-Tier 1 and Tier 1.5 was found by reciting, and only then written into a test.
-That is what Tier 3 is for.
+**Baseline today:** 85.1% coverage, 0.6% false alarms, 2/2 caught, 56 unit
+tests, 63 search cases.
+
+**Report coverage first.** The false alarm rate is a fraction of the words the
+app *scored*, so a word never shown costs nothing and a change that shows
+fewer words scores better. Tier 3 found a recording the benchmark called clean
+that had silently dropped 24 of its 93 words. Both numbers, always, or the
+rate can be improved by doing less.
 
 ---
 
@@ -341,58 +347,104 @@ without *hurting* when the reciter is somewhere else entirely.
 
 ---
 
-# Tier 3 — Make every session produce test data
+# Tier 3 — Make every session produce test data ✅ DONE
 
-*This may need to come before Tier 2 — Tier 1's gate decides.*
+### Gate result
 
-### Why
+| Measure | Result | Target |
+|---|---|---|
+| Clips produced | **one per ayah the tracker entered** ✅ | one per ayah recited |
+| Clip labels | **match what was recited** ✅ (Al-Mutaffifin: 16/16 correct) | match |
+| Replay reproduces the live verdicts | **approximately — see below** | yes |
+| Benchmark corpus size | 11 → **11 + every session from now on** | 30+ |
+| Unit tests | 43 → **56** ✅ | pass |
+| Benchmark false alarms / caught | **0.6% / 2-2**, unchanged ✅ | no worse |
 
-The benchmark has 11 recordings because they were recorded by hand. Every real
-session is a missed opportunity: **all of Tier 1's bugs were visible in the log
-but cannot be replayed**, so no test can be written for any of them. That is
-why they shipped.
-
-### Work
+### What it does
 
 `./run.sh --record`:
 
 ```
-logs/session-20260919-122520/
-  session.log
-  full.flac                       the whole session
-  001_1-4_مالك-يوم-الدين.flac      one file per ayah the tracker identified
-  002_1-5_اياك-نعبد.flac
-  manifest.json                   ayah, time range, verdicts, confidence
+logs/session-20260919-131925/
+  session.log                     symlink to the run's debug log
+  full.flac                       the whole session, uncut
+  000_before-lock.flac            everything recited before discovery answered
+  001_83-1_ويل-للمطففين.flac       one clip per ayah the tracker believed
+  002_83-2_الذين-اذا-اكتالوا.flac
+  manifest.json                   labels, spans, verdicts, transcriptions
 ```
 
-- Split on the tracker's **own** ayah transitions, so each clip is labelled
-  with the ayah the app *believed* it was in. Where that belief was wrong the
-  clip is more valuable, not less — it is the failing case, already isolated.
-- `manifest.json` records what the app decided, so a clip can be replayed and
-  compared against the same decision later.
-- `benchmark_recordings.py --from-session <dir>` turns a captured session
-  straight into benchmark cases.
-
-### Gate
-
 ```bash
-./run.sh --record                                  # recite Al-Fatiha
 python scripts/benchmark_recordings.py --from-session logs/session-*/
 ```
 
-| Measure | Target |
+- Clips are cut on the tracker's **own** ayah transitions and carry the label
+  the app believed. A wrong label is a failing case already isolated and
+  already carrying the wrong answer.
+- **Clips overlap on purpose.** A window is 3s, so the tracker enters the next
+  ayah while the current one is still being recited; cutting each clip where
+  the next began lopped the end off every ayah — Al-Qadr 1 came out 0.9s long
+  for five words. Each clip spans the windows attributed to it, end to end.
+- **The audio before the lock is kept as its own clip.** Discovery struggles
+  most there, and no hand-made recording contains it: a person recording a
+  test case starts cleanly.
+- `manifest.json` stores each verdict with its **evidence tuple**, so a replay
+  can tell a word that was heard whole from one credited off a clipped edge.
+- PyAV already decodes the benchmark recordings, so recording adds nothing new
+  to install.
+
+### What the result changed — read this before Tier 4
+
+**The benchmark was measuring the wrong thing, and recording a session is what
+showed it.** `surah mutaffifin 1-19` reports a clean run — 69 ok, 0 wrong, 0
+missed, 0% false alarms. Cutting the same recording into clips showed
+**83:15, 83:16 and 83:17 were never scored at all**, along with 24 of the
+recording's 93 words.
+
+The false alarm rate is a fraction of the words *scored*. A word never shown
+is not in the denominator, so **a change that quietly shows fewer words scores
+better.** Every number in this file above Tier 1.5 was read without knowing
+that.
+
+The report now leads with coverage:
+
+```
+COVERAGE          154/181 = 85.1% of recited words given a verdict
+FALSE ALARM RATE  1/154 = 0.6%
+                  (a fraction of words SCORED — showing fewer words
+                   flatters it, so coverage must hold)
+```
+
+**85.1%, not 99.4%.** One word in seven is never given a verdict at all. The
+per-recording column `unseen` says where:
+
+| recording | unseen |
 |---|---|
-| Clips produced | one per ayah recited |
-| Clip labels | match what was actually recited |
-| Replay reproduces the live verdicts | yes |
-| Benchmark corpus size | 11 → **30+** within a week of normal use |
+| `surah mutaffifin 1-19` | **24** (all of 83:15–17) |
+| `surah ala 11` | **2** — position FOUND, *zero* words scored |
+| `fatiha first 2 ayahs` | 1 |
 
-### What the result changes
+`surah nisa 11 from the middle` is marked `partial=True` and left out of the
+total: it starts mid-ayah, so most of 4:11 was never recited and cannot be
+counted against the app.
 
-**This tier re-plans Tier 4 entirely.** The failures in the enlarged corpus
-decide which Tilawa idea is worth implementing. Do not pick from Tier 4 before
-seeing them — the current pick order is a guess based on 6 remaining errors,
-which is too small a sample to plan from.
+**This re-plans Tier 4 before it starts.** Tier 4 is a list of ways to reduce
+false alarms, and false alarms are now 1 word in the whole corpus. Coverage is
+27 words. **Fixing what the app never shows is worth more than fixing what it
+shows wrongly** — and `surah ala 11` finding the position and scoring nothing
+is the place to start.
+
+### Caveat on the round-trip
+
+"Replay reproduces the live verdicts" holds only approximately, and the reason
+is worth writing down. A clip replayed on its own gets a different set of
+windows than it had inside the session — different boundaries, no stale-window
+drops — so a word at a window edge can come back with a different verdict.
+Al-Qadr 2:4 الْقَدْرِ was `wrong` live and `ok` from its clip.
+
+That is not a defect in the recording. It is a measurement of how much a
+verdict depends on where the window boundaries fell, which was invisible
+before. Treat a disagreement as the thing to look at, not as a broken manifest.
 
 ---
 
@@ -401,6 +453,12 @@ which is too small a sample to plan from.
 *`/home/hashus/code/tilawa`, cloned and inspected. Each item is independently
 measurable — implement and gate them **one at a time**, in whatever order
 Tier 3's corpus says matters.*
+
+> **Tier 3 says: not yet.** False alarms are 1 word in 154; coverage is 27
+> words never shown at all. This whole tier reduces false alarms, so it is
+> now optimising the smaller of the two numbers. Do the coverage work first
+> and re-read this list afterwards — 4.1 `heardRatio` is already partly
+> redundant since `_is_fragment` landed in Tier 1.5.
 
 ### Why
 
