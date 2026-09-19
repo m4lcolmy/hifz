@@ -175,27 +175,78 @@ labels cheap, so a captured clip is a *candidate* until someone listens to it.
 
 ---
 
-# Tier E — Accuracy, from Tilawa
+# Tier E — Accuracy, from Tilawa ✅ DONE (one adopted, two refuted)
 
-*`/home/hashus/code/tilawa`, cloned and inspected. Implement and gate **one at
-a time**.*
+**One of the five helped. Two were refuted by measurement on our own data,
+and the way they failed is the strongest argument yet for Tier F.**
 
-> **Deprioritised twice over.** False alarms are 1 word in 154 on the
-> benchmark, and the reds left in real sessions are words the model never
-> heard correctly in *any* window — `فُصِّلَتْ` came back `فُصِّدَتْ` from 7
-> windows of 11. No matcher change fixes that; see Tier F. Come back here only
-> if Tiers B and C leave false alarms as the largest number.
+### E.3 — Never condemn a word in a region you do not trust ✅ ADOPTED
 
-- **E.1 `heardRatio`** — heard length ÷ expected length. **Largely redundant
-  already**: `_is_fragment` (Tier 1.5) removed both fragment false alarms.
-- **E.2 Phoneme confusion costs** — weighted edit distance over `ذدضتط`,
-  `ظزذصسث`, `قكغ`, `فبم`, `ه/ح`, `ء/ع`, `ن/م`. Would cover `حُوبًا`/`خُوبًا`
-  and `فُصِّلَتْ`/`فُصِّدَتْ`. **Risk: this makes the matcher more forgiving and
-  is the item most likely to cost mistake detection. Gate it hard.**
-- **E.3 Only flag a word sitting between two confidently-correct words.**
-- **E.4 Full pausal (waqf) modelling.** Partly settled — Tier 3.6 stopped
-  grading short vowels, which handles waqf endings for free.
-- **E.5 Never grade tajweed, only word errors.** **Adopted** in Tier 3.6.
+A wrong verdict between words that were themselves mis-heard is far more
+likely to be the alignment slipping than the reciter erring. A word is now
+shown as wrong only when **at least one neighbour in the same ayah is
+confidently correct**; otherwise it goes amber — *something happened here we
+could not read*.
+
+Painting moved out of `_commit` into a `_repaint` pass, because a word's
+colour can now change without new evidence about that word.
+
+| | An-Nisa 4:11–12 | Al-Mu'minun | Al-Hijr | benchmark |
+|---|---|---|---|---|
+| red before | 17 | 5 | 4 | 0.6%, 2/2 |
+| red after | **14** | **3** | 4 | **0.6%, 2/2** |
+
+No words lost. **Tilawa requires *both* neighbours clear; we require one.**
+Measured, the strict version takes false alarms to 0.0% and drops mistakes
+caught to **1/2** — it loses the Al-Hujurat `وَأُنثَىٰ` mistake, which sits in a
+stretch with five missed words. A drop in mistake detection disqualifies an
+item regardless of the false alarm number.
+
+### E.1 `heardRatio` and E.2 phoneme costs ❌ BOTH REFUTED
+
+Neither was implemented, because computing what they *would* decide on the
+words the app actually paints red settles it in one table. Tilawa's cost model
+(`phonemeCost.ts`: groups `ذدضتط` `ظزذصسث` `جزش` `ةهت` `قكغ` `فبم`, pairs
+`ه/ح` `غ/خ` `ء/ع` `ن/م` `ن/ل` `ظ/ض`), length-normalised:
+
+| heard | reference | distance | heardRatio | what it is |
+|---|---|---|---|---|
+| `فَقَالُوا` | `وَقَالُوا` | **0.17** | 1.00 | false alarm |
+| `فَلَهُمْ` | `وَلَهُمْ` | **0.25** | 1.00 | **deliberate mistake** |
+| `خُوبًا` | `حُوبًا` | **0.25** | 1.00 | false alarm |
+| `فُصِّدَتْ` | `فُصِّلَتْ` | **0.25** | 1.00 | false alarm |
+| `يَتَامَى` | `الْيَتَامَىٰ` | 0.29 | 0.71 | **real error** (dropped `ال`) |
+| `أَوْ` | `وَأُنثَىٰ` | 0.80 | **0.40** | **deliberate mistake** |
+| `بُهُ` | `السُّدُسُ` | — | **0.40** | false alarm |
+| `أَلِيمٌ` | `عَظِيمٌ` | 0.50 | 1.00 | false alarm |
+
+**There is no threshold that separates them.** The deliberate mistake sits at
+0.25, the same distance as two false alarms and *above* a third at 0.17. On
+`heardRatio` the deliberate mistake and a false alarm are both exactly 0.40.
+Any cut that forgives the false alarms forgives the mistake.
+
+That is not a flaw in Tilawa's design. It is what the numbers mean: **our
+remaining false alarms are acoustically identical to our real errors.** One
+letter wrong in a short word is one letter wrong in a short word, whether the
+reciter said it or the model misheard it. No function of the two strings can
+tell them apart.
+
+### E.4 waqf ✅ / E.5 never grade tajweed ✅
+
+Both settled in Tier 3.6, which stopped grading short vowels — waqf endings
+fall out for free, and not grading pronunciation quality is now the rule.
+
+### What this changes
+
+**Tier F is no longer optional, and this tier is the reason.** Every avenue for
+telling a real error from a mis-hearing *by comparing strings* is now closed:
+E.1 and E.2 are refuted arithmetically, E.3 is adopted and takes the remaining
+reds from 26 to 21 across three sessions. What is left needs either
+**agreement across windows** — which Tier 3.5 showed does not separate them
+either, since the windows agree on the wrong reading — or **an acoustic model
+that does not mishear in the first place.**
+
+Only the second is left.
 
 ---
 
