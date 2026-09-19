@@ -158,5 +158,75 @@ class TrackingAnchorTests(unittest.TestCase):
         )
 
 
+class MatchForModeTests(unittest.TestCase):
+    """The seam between the dispatcher and the index.
+
+    Every other test in this file calls `discover()` or `track()` directly.
+    That is why a whole search path could sit unreachable for months: the
+    dispatcher refused the chunk before the index ever saw it, and nothing
+    tested the two together. The live app and the benchmark both go through
+    `match_for_mode`, so this is the only place that covers what they do.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = QuranIndex()
+
+    def _discover(self, text: str):
+        from src.core.matching import match_for_mode
+        return match_for_mode(self.index, text, "discovery", (None, None, None))
+
+    def test_a_one_word_ayah_reaches_the_index(self):
+        """Tier G found 23 of 30 muqatta'at cases scoring LOST with zero
+        words shown, while Whisper was transcribing يس and طه perfectly. The
+        two-word discovery floor was refusing them before `discover()` ran,
+        so DISCOVERY_SOLO_AYAH was a setting connected to nothing — and the
+        logs had been saying "SKIPPED (only 1 word(s), need 2)" 111 times."""
+        for word, expected in (("يس", (36, 1)), ("طه", (20, 1)),
+                               ("المص", (7, 1)), ("كهيعص", (19, 1)),
+                               ("عسق", (42, 2)), ("والعصر", (103, 1))):
+            with self.subTest(word=word):
+                decision = self._discover(word)
+                self.assertTrue(decision.attempted,
+                                "refused before the index was consulted")
+                self.assertIsNotNone(decision.match)
+                self.assertEqual(
+                    (decision.match.surah_id, decision.match.ayah_id), expected)
+
+    def test_an_ambiguous_muqattaat_is_still_refused(self):
+        """الم opens six surahs and normalization merges it with the أَلَمْ of
+        أَلَمْ تَرَ, so hearing it really does not say where you are. The floor
+        dropping for solo ayahs must not turn into the floor dropping."""
+        for word in ("الم", "حم", "طسم", "الر"):
+            with self.subTest(word=word):
+                self.assertIsNone(self._discover(word).match)
+
+    def test_an_ordinary_single_word_is_still_refused(self):
+        """قل opens 173 ayahs. One ordinary word places nothing, and letting
+        it through is how a session jumps to the wrong surah."""
+        for word in ("قل", "الله", "ان"):
+            with self.subTest(word=word):
+                decision = self._discover(word)
+                self.assertFalse(decision.attempted)
+                self.assertIsNone(decision.match)
+
+    def test_two_words_still_go_through_the_normal_path(self):
+        decision = self._discover("الله الصمد")
+        self.assertTrue(decision.attempted)
+        self.assertEqual(
+            (decision.match.surah_id, decision.match.ayah_id), (112, 2))
+
+    def test_the_index_agrees_with_itself_about_solo_ayahs(self):
+        """`is_solo_ayah` gates the dispatcher and `discover` acts on it. If
+        they disagreed, a word would be let through and then dropped."""
+        for word in ("يس", "طه", "والعصر", "مدهامتان"):
+            with self.subTest(word=word):
+                self.assertTrue(self.index.is_solo_ayah(word))
+                self.assertIsNotNone(self.index.discover(word))
+        for word in ("الم", "قل", "حم"):
+            with self.subTest(word=word):
+                self.assertFalse(self.index.is_solo_ayah(word))
+
+
 if __name__ == "__main__":
     unittest.main()

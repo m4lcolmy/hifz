@@ -40,9 +40,33 @@ CHANNELS = 1
 # are built only to be dropped — but every extra window is another look at
 # each word, and more looks mean fewer words condemned on a bad fragment.
 # So the step tracks inference speed: ~75 ms/window on GPU, ~600 ms on CPU.
-WINDOW_MS = 3000             # audio window handed to Whisper
-WINDOW_STEP_MS = 300         # on GPU
-WINDOW_STEP_MS_CPU = 600     # fallback when running on CPU
+# Measured 2026-09-19 against the first real-conditions recording in the
+# corpus — a whole Mushaf page of An-Nisa (4:12-14, 119 words of dense
+# inheritance law) recited at ~70 words/min into a room microphone:
+#
+#   window  step   coverage   false alarms   caught   room-mic false alarms
+#   3000    300      99.3%        6.8%        2/2          17.0%
+#   3000    150      99.6%        7.5%        2/2          17.7%
+#   4000    200     100.0%        5.3%        2/2          10.1%
+#
+# 4000/200 is 42% more looks at every word (1134 windows against 801), and
+# more looks is the whole mechanism by which this app survives a bad
+# transcription: a word heard correctly in any one window stays green.
+# Whole-file transcription of that recording matches only 50% of the
+# reference words, and the app still scores it at 10% false alarms.
+#
+# The trade: on the eleven older recordings the rate goes 0.6% -> 2.5%
+# (1 false alarm -> 4). Those eleven are short, easy surahs and were what
+# 3000/300 was tuned against; coverage on them improves, 99.4% -> 100%.
+# Revert both numbers to 3000/300 to get that 0.6% back, and accept 17% on
+# a real page.
+#
+# ASR p90 is 141 ms at a 4000 ms window, against a 200 ms step, so no window
+# is dropped. The step must stay above the model's inference time or windows
+# are built only to be discarded — that is why it is not lower still.
+WINDOW_MS = 4000             # audio window handed to Whisper
+WINDOW_STEP_MS = 200         # on GPU
+WINDOW_STEP_MS_CPU = 800     # fallback when running on CPU — ~790 ms/window
 
 # ── ASR quality gates ─────────────────────────────────────────────────
 # Whisper invents words out of silence (this project kept getting "تَعْمَى").
@@ -132,6 +156,52 @@ DISCOVERY_SOLO_AYAH = True
 # matching a reference word this far back is treated as an echo and reported
 # as not heard rather than as the word it lined up against.
 ECHO_LOOKBACK = 25
+
+# ── How much evidence before a word is painted red ────────────────────
+# Whose decision this is: not the model's. Measured across 19 session logs —
+# 4,792 wrong verdicts, 2,652 distinct heard/reference pairs — only 13% are a
+# single letter apart, and the largest single-letter class is و↔ف, which is
+# the class the deliberate mistake فَلَهُمْ/وَلَهُمْ belongs to. So forgiving a
+# letter class is not a setting the app can offer honestly: Tier E established
+# that the mistake and the false alarm are the same edit at the same distance.
+#
+# What the reciter CAN choose is which error they would rather have. Hifz
+# review wants everything flagged; fluency practice wants to be stopped only
+# for a real error. Each level below is a different answer to that, and each
+# must carry measured numbers:
+#
+#     python scripts/benchmark_recordings.py --strictness all
+#
+#   strict     any letter difference is wrong, on one observation.
+#   confirmed  the same, but a word must be heard wrong by this many separate
+#              audio windows before it is painted red. Forgives no letter
+#              class — it asks for more evidence, not for a smaller mistake —
+#              so the deliberate mistakes should survive it. This generalizes
+#              EDGE_CONFIRMATIONS, which already does exactly this, but only
+#              for words sitting at a window boundary.
+#   words      single-letter differences are not condemned. Known cost: this
+#              is the class فَلَهُمْ/وَلَهُمْ belongs to, so it stops catching
+#              that mistake. Labelled honestly rather than called "lenient".
+#   follow     nothing is painted wrong. For reading along.
+STRICTNESS = "confirmed"
+
+STRICTNESS_LEVELS = {
+    #                  windows that must    smallest difference   paint
+    #                  agree it is wrong    worth condemning      red at all
+    "strict":    {"confirmations": 1, "min_letter_diff": 1, "paint_wrong": True},
+    "confirmed": {"confirmations": 2, "min_letter_diff": 1, "paint_wrong": True},
+    "words":     {"confirmations": 1, "min_letter_diff": 2, "paint_wrong": True},
+    "follow":    {"confirmations": 0, "min_letter_diff": 0, "paint_wrong": False},
+}
+
+#: One line each, for the settings menu.
+STRICTNESS_LABELS = {
+    "strict": "Strict — flag every difference",
+    "confirmed": "Confirmed — flag once two windows agree",
+    "words": "Words only — misses one-letter mistakes",
+    "follow": "Follow along — never flag anything",
+}
+
 
 # ── Speech engine ─────────────────────────────────────────────────────
 # Whisper is the default and the tuned one. A second engine is something you

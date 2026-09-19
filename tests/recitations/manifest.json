@@ -1,0 +1,4342 @@
+{
+  "version": 1,
+  "seed": 1446,
+  "run_gap_ms": 350,
+  "generated_by": "scripts/fetch_recitations.py",
+  "source": {
+    "name": "everyayah",
+    "base_url": "https://everyayah.com/data",
+    "terms_url": "https://everyayah.com/",
+    "terms": "everyayah.com republishes recordings gathered from several sources and offers them for free download; it publishes no single machine-readable licence, and the rights in each reciter's recording remain with whoever made it. Read the site before doing anything with the audio beyond running this benchmark locally. Nothing fetched here is redistributed: the audio is gitignored and only this manifest — ayah numbers, which is to say facts — is committed."
+  },
+  "reciters": [
+    {
+      "id": "Husary_Muallim_128kbps",
+      "label": "Al-Husary (muʿallim)",
+      "pace": "very slow teaching pace, every madd stretched to its full count"
+    },
+    {
+      "id": "Abdul_Basit_Murattal_64kbps",
+      "label": "Abdul Basit (murattal)",
+      "pace": "slow murattal, long pauses between ayahs"
+    },
+    {
+      "id": "Husary_64kbps",
+      "label": "Al-Husary (murattal)",
+      "pace": "measured murattal — the closest to the hand-made corpus"
+    },
+    {
+      "id": "Alafasy_64kbps",
+      "label": "Mishary Alafasy",
+      "pace": "medium, the voice most people have heard"
+    },
+    {
+      "id": "Abdurrahmaan_As-Sudais_192kbps",
+      "label": "As-Sudais",
+      "pace": "fast, and the hardest on a 3-second window"
+    }
+  ],
+  "strata": [
+    {
+      "name": "muqattaat",
+      "target": 30,
+      "why": "الم was invisible for months and حم still is; an ayah the app cannot even locate scores zero silently",
+      "chosen": 30
+    },
+    {
+      "name": "openings",
+      "target": 30,
+      "why": "every session begins with one, and discovery refuses the basmala because it matches 114 places",
+      "chosen": 30
+    },
+    {
+      "name": "long",
+      "target": 20,
+      "why": "the hand-made corpus tops out at 17 words; 2:282 is 129, and nothing has ever tested the tracker over that distance",
+      "chosen": 20
+    },
+    {
+      "name": "short",
+      "target": 40,
+      "why": "a one-word ayah was unreachable behind a two-word discovery floor for months; juz 30 is full of them",
+      "chosen": 40
+    },
+    {
+      "name": "neighbours",
+      "target": 30,
+      "why": "83:14 and 83:18 both open كَلَّا and the tracker anchored on the wrong one; Ar-Rahman's refrain repeats 31 times",
+      "chosen": 30
+    },
+    {
+      "name": "runs",
+      "target": 25,
+      "why": "half the app's behaviour is transitions — gap-fill, page turns, tracking across an ayah boundary",
+      "chosen": 25
+    },
+    {
+      "name": "random",
+      "target": 100,
+      "why": "the ordinary ayah, as a control — if this stratum is the only one that scores well, the app only handles the ordinary ayah",
+      "chosen": 100
+    }
+  ],
+  "cases": [
+    {
+      "id": "muqattaat/Abdul_Basit_Murattal_64kbps/002_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 2,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdul_Basit_Murattal_64kbps/002_001.mp3"
+    },
+    {
+      "id": "muqattaat/Alafasy_64kbps/003_001",
+      "stratum": "muqattaat",
+      "reciter": "Alafasy_64kbps",
+      "surah": 3,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Alafasy_64kbps/003_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdurrahmaan_As-Sudais_192kbps/007_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 7,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/007_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_Muallim_128kbps/010_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 10,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 5,
+      "file": "Husary_Muallim_128kbps/010_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_64kbps/011_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_64kbps",
+      "surah": 11,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 10,
+      "file": "Husary_64kbps/011_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdul_Basit_Murattal_64kbps/012_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 12,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 5,
+      "file": "Abdul_Basit_Murattal_64kbps/012_001.mp3"
+    },
+    {
+      "id": "muqattaat/Alafasy_64kbps/013_001",
+      "stratum": "muqattaat",
+      "reciter": "Alafasy_64kbps",
+      "surah": 13,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 15,
+      "file": "Alafasy_64kbps/013_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdurrahmaan_As-Sudais_192kbps/014_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 14,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 16,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/014_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_Muallim_128kbps/015_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 15,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 6,
+      "file": "Husary_Muallim_128kbps/015_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_64kbps/019_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_64kbps",
+      "surah": 19,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_64kbps/019_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdul_Basit_Murattal_64kbps/020_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 20,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdul_Basit_Murattal_64kbps/020_001.mp3"
+    },
+    {
+      "id": "muqattaat/Alafasy_64kbps/026_001",
+      "stratum": "muqattaat",
+      "reciter": "Alafasy_64kbps",
+      "surah": 26,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Alafasy_64kbps/026_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdurrahmaan_As-Sudais_192kbps/027_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 27,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 6,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/027_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_Muallim_128kbps/028_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 28,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_Muallim_128kbps/028_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_64kbps/029_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_64kbps",
+      "surah": 29,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_64kbps/029_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdul_Basit_Murattal_64kbps/030_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 30,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdul_Basit_Murattal_64kbps/030_001.mp3"
+    },
+    {
+      "id": "muqattaat/Alafasy_64kbps/031_001",
+      "stratum": "muqattaat",
+      "reciter": "Alafasy_64kbps",
+      "surah": 31,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Alafasy_64kbps/031_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdurrahmaan_As-Sudais_192kbps/032_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 32,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/032_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_Muallim_128kbps/036_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 36,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_Muallim_128kbps/036_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_64kbps/038_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_64kbps",
+      "surah": 38,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 4,
+      "file": "Husary_64kbps/038_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdul_Basit_Murattal_64kbps/040_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 40,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdul_Basit_Murattal_64kbps/040_001.mp3"
+    },
+    {
+      "id": "muqattaat/Alafasy_64kbps/041_001",
+      "stratum": "muqattaat",
+      "reciter": "Alafasy_64kbps",
+      "surah": 41,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Alafasy_64kbps/041_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdurrahmaan_As-Sudais_192kbps/042_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 42,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/042_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_Muallim_128kbps/042_002",
+      "stratum": "muqattaat",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 42,
+      "ayahs": [
+        2,
+        2
+      ],
+      "parts": [
+        2
+      ],
+      "words": 1,
+      "file": "Husary_Muallim_128kbps/042_002.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_64kbps/043_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_64kbps",
+      "surah": 43,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_64kbps/043_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdul_Basit_Murattal_64kbps/044_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 44,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdul_Basit_Murattal_64kbps/044_001.mp3"
+    },
+    {
+      "id": "muqattaat/Alafasy_64kbps/045_001",
+      "stratum": "muqattaat",
+      "reciter": "Alafasy_64kbps",
+      "surah": 45,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Alafasy_64kbps/045_001.mp3"
+    },
+    {
+      "id": "muqattaat/Abdurrahmaan_As-Sudais_192kbps/046_001",
+      "stratum": "muqattaat",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 46,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/046_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_Muallim_128kbps/050_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 50,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 3,
+      "file": "Husary_Muallim_128kbps/050_001.mp3"
+    },
+    {
+      "id": "muqattaat/Husary_64kbps/068_001",
+      "stratum": "muqattaat",
+      "reciter": "Husary_64kbps",
+      "surah": 68,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 4,
+      "file": "Husary_64kbps/068_001.mp3"
+    },
+    {
+      "id": "openings/Husary_64kbps/008_001",
+      "stratum": "openings",
+      "reciter": "Husary_64kbps",
+      "surah": 8,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 18,
+      "file": "Husary_64kbps/008_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdurrahmaan_As-Sudais_192kbps/016_001",
+      "stratum": "openings",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 16,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 9,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/016_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Alafasy_64kbps/017_001",
+      "stratum": "openings",
+      "reciter": "Alafasy_64kbps",
+      "surah": 17,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 21,
+      "file": "Alafasy_64kbps/017_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdul_Basit_Murattal_64kbps/018_001",
+      "stratum": "openings",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 18,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 11,
+      "file": "Abdul_Basit_Murattal_64kbps/018_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_Muallim_128kbps/021_001",
+      "stratum": "openings",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 21,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 7,
+      "file": "Husary_Muallim_128kbps/021_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_64kbps/024_001",
+      "stratum": "openings",
+      "reciter": "Husary_64kbps",
+      "surah": 24,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 9,
+      "file": "Husary_64kbps/024_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdurrahmaan_As-Sudais_192kbps/025_001",
+      "stratum": "openings",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 25,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 9,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/025_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Alafasy_64kbps/033_001",
+      "stratum": "openings",
+      "reciter": "Alafasy_64kbps",
+      "surah": 33,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 13,
+      "file": "Alafasy_64kbps/033_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdul_Basit_Murattal_64kbps/048_001",
+      "stratum": "openings",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 48,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 5,
+      "file": "Abdul_Basit_Murattal_64kbps/048_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_Muallim_128kbps/051_001",
+      "stratum": "openings",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 51,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Husary_Muallim_128kbps/051_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_64kbps/057_001",
+      "stratum": "openings",
+      "reciter": "Husary_64kbps",
+      "surah": 57,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 9,
+      "file": "Husary_64kbps/057_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdurrahmaan_As-Sudais_192kbps/059_001",
+      "stratum": "openings",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 59,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 11,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/059_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Alafasy_64kbps/061_001",
+      "stratum": "openings",
+      "reciter": "Alafasy_64kbps",
+      "surah": 61,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 11,
+      "file": "Alafasy_64kbps/061_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdul_Basit_Murattal_64kbps/064_001",
+      "stratum": "openings",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 64,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 17,
+      "file": "Abdul_Basit_Murattal_64kbps/064_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_Muallim_128kbps/067_001",
+      "stratum": "openings",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 67,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 9,
+      "file": "Husary_Muallim_128kbps/067_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_64kbps/070_001",
+      "stratum": "openings",
+      "reciter": "Husary_64kbps",
+      "surah": 70,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 4,
+      "file": "Husary_64kbps/070_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdurrahmaan_As-Sudais_192kbps/071_001",
+      "stratum": "openings",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 71,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 14,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/071_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Alafasy_64kbps/078_001",
+      "stratum": "openings",
+      "reciter": "Alafasy_64kbps",
+      "surah": 78,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Alafasy_64kbps/078_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdul_Basit_Murattal_64kbps/079_001",
+      "stratum": "openings",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 79,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Abdul_Basit_Murattal_64kbps/079_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_Muallim_128kbps/080_001",
+      "stratum": "openings",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 80,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Husary_Muallim_128kbps/080_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_64kbps/084_001",
+      "stratum": "openings",
+      "reciter": "Husary_64kbps",
+      "surah": 84,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 3,
+      "file": "Husary_64kbps/084_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdurrahmaan_As-Sudais_192kbps/086_001",
+      "stratum": "openings",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 86,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/086_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Alafasy_64kbps/090_001",
+      "stratum": "openings",
+      "reciter": "Alafasy_64kbps",
+      "surah": 90,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 4,
+      "file": "Alafasy_64kbps/090_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdul_Basit_Murattal_64kbps/091_001",
+      "stratum": "openings",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 91,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Abdul_Basit_Murattal_64kbps/091_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_Muallim_128kbps/095_001",
+      "stratum": "openings",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 95,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Husary_Muallim_128kbps/095_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_64kbps/096_001",
+      "stratum": "openings",
+      "reciter": "Husary_64kbps",
+      "surah": 96,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 5,
+      "file": "Husary_64kbps/096_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdurrahmaan_As-Sudais_192kbps/099_001",
+      "stratum": "openings",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 99,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 4,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/099_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Alafasy_64kbps/102_001",
+      "stratum": "openings",
+      "reciter": "Alafasy_64kbps",
+      "surah": 102,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 2,
+      "file": "Alafasy_64kbps/102_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Abdul_Basit_Murattal_64kbps/107_001",
+      "stratum": "openings",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 107,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 4,
+      "file": "Abdul_Basit_Murattal_64kbps/107_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "openings/Husary_Muallim_128kbps/110_001",
+      "stratum": "openings",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 110,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        0,
+        1
+      ],
+      "words": 5,
+      "file": "Husary_Muallim_128kbps/110_001_basmala.flac",
+      "note": "basmala first where the reciter has one"
+    },
+    {
+      "id": "long/Husary_64kbps/002_061",
+      "stratum": "long",
+      "reciter": "Husary_64kbps",
+      "surah": 2,
+      "ayahs": [
+        61,
+        61
+      ],
+      "parts": [
+        61
+      ],
+      "words": 59,
+      "file": "Husary_64kbps/002_061.mp3"
+    },
+    {
+      "id": "long/Husary_Muallim_128kbps/002_187",
+      "stratum": "long",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 2,
+      "ayahs": [
+        187,
+        187
+      ],
+      "parts": [
+        187
+      ],
+      "words": 65,
+      "file": "Husary_Muallim_128kbps/002_187.mp3"
+    },
+    {
+      "id": "long/Alafasy_64kbps/002_217",
+      "stratum": "long",
+      "reciter": "Alafasy_64kbps",
+      "surah": 2,
+      "ayahs": [
+        217,
+        217
+      ],
+      "parts": [
+        217
+      ],
+      "words": 57,
+      "file": "Alafasy_64kbps/002_217.mp3"
+    },
+    {
+      "id": "long/Abdurrahmaan_As-Sudais_192kbps/002_233",
+      "stratum": "long",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 2,
+      "ayahs": [
+        233,
+        233
+      ],
+      "parts": [
+        233
+      ],
+      "words": 64,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/002_233.mp3"
+    },
+    {
+      "id": "long/Abdul_Basit_Murattal_64kbps/002_253",
+      "stratum": "long",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 2,
+      "ayahs": [
+        253,
+        253
+      ],
+      "parts": [
+        253
+      ],
+      "words": 52,
+      "file": "Abdul_Basit_Murattal_64kbps/002_253.mp3"
+    },
+    {
+      "id": "long/Husary_64kbps/002_259",
+      "stratum": "long",
+      "reciter": "Husary_64kbps",
+      "surah": 2,
+      "ayahs": [
+        259,
+        259
+      ],
+      "parts": [
+        259
+      ],
+      "words": 67,
+      "file": "Husary_64kbps/002_259.mp3"
+    },
+    {
+      "id": "long/Husary_Muallim_128kbps/003_154",
+      "stratum": "long",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 3,
+      "ayahs": [
+        154,
+        154
+      ],
+      "parts": [
+        154
+      ],
+      "words": 75,
+      "file": "Husary_Muallim_128kbps/003_154.mp3"
+    },
+    {
+      "id": "long/Alafasy_64kbps/004_011",
+      "stratum": "long",
+      "reciter": "Alafasy_64kbps",
+      "surah": 4,
+      "ayahs": [
+        11,
+        11
+      ],
+      "parts": [
+        11
+      ],
+      "words": 71,
+      "file": "Alafasy_64kbps/004_011.mp3"
+    },
+    {
+      "id": "long/Abdurrahmaan_As-Sudais_192kbps/004_023",
+      "stratum": "long",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 4,
+      "ayahs": [
+        23,
+        23
+      ],
+      "parts": [
+        23
+      ],
+      "words": 54,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/004_023.mp3"
+    },
+    {
+      "id": "long/Abdul_Basit_Murattal_64kbps/005_006",
+      "stratum": "long",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 5,
+      "ayahs": [
+        6,
+        6
+      ],
+      "parts": [
+        6
+      ],
+      "words": 61,
+      "file": "Abdul_Basit_Murattal_64kbps/005_006.mp3"
+    },
+    {
+      "id": "long/Husary_64kbps/005_041",
+      "stratum": "long",
+      "reciter": "Husary_64kbps",
+      "surah": 5,
+      "ayahs": [
+        41,
+        41
+      ],
+      "parts": [
+        41
+      ],
+      "words": 67,
+      "file": "Husary_64kbps/005_041.mp3"
+    },
+    {
+      "id": "long/Husary_Muallim_128kbps/005_048",
+      "stratum": "long",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 5,
+      "ayahs": [
+        48,
+        48
+      ],
+      "parts": [
+        48
+      ],
+      "words": 51,
+      "file": "Husary_Muallim_128kbps/005_048.mp3"
+    },
+    {
+      "id": "long/Alafasy_64kbps/009_120",
+      "stratum": "long",
+      "reciter": "Alafasy_64kbps",
+      "surah": 9,
+      "ayahs": [
+        120,
+        120
+      ],
+      "parts": [
+        120
+      ],
+      "words": 52,
+      "file": "Alafasy_64kbps/009_120.mp3"
+    },
+    {
+      "id": "long/Abdurrahmaan_As-Sudais_192kbps/013_031",
+      "stratum": "long",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 13,
+      "ayahs": [
+        31,
+        31
+      ],
+      "parts": [
+        31
+      ],
+      "words": 51,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/013_031.mp3"
+    },
+    {
+      "id": "long/Abdul_Basit_Murattal_64kbps/024_031",
+      "stratum": "long",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 24,
+      "ayahs": [
+        31,
+        31
+      ],
+      "parts": [
+        31
+      ],
+      "words": 78,
+      "file": "Abdul_Basit_Murattal_64kbps/024_031.mp3"
+    },
+    {
+      "id": "long/Husary_64kbps/024_061",
+      "stratum": "long",
+      "reciter": "Husary_64kbps",
+      "surah": 24,
+      "ayahs": [
+        61,
+        61
+      ],
+      "parts": [
+        61
+      ],
+      "words": 76,
+      "file": "Husary_64kbps/024_061.mp3"
+    },
+    {
+      "id": "long/Husary_Muallim_128kbps/033_050",
+      "stratum": "long",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 33,
+      "ayahs": [
+        50,
+        50
+      ],
+      "parts": [
+        50
+      ],
+      "words": 61,
+      "file": "Husary_Muallim_128kbps/033_050.mp3"
+    },
+    {
+      "id": "long/Alafasy_64kbps/048_029",
+      "stratum": "long",
+      "reciter": "Alafasy_64kbps",
+      "surah": 48,
+      "ayahs": [
+        29,
+        29
+      ],
+      "parts": [
+        29
+      ],
+      "words": 54,
+      "file": "Alafasy_64kbps/048_029.mp3"
+    },
+    {
+      "id": "long/Abdurrahmaan_As-Sudais_192kbps/060_010",
+      "stratum": "long",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 60,
+      "ayahs": [
+        10,
+        10
+      ],
+      "parts": [
+        10
+      ],
+      "words": 55,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/060_010.mp3"
+    },
+    {
+      "id": "long/Abdul_Basit_Murattal_64kbps/073_020",
+      "stratum": "long",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 73,
+      "ayahs": [
+        20,
+        20
+      ],
+      "parts": [
+        20
+      ],
+      "words": 78,
+      "file": "Abdul_Basit_Murattal_64kbps/073_020.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/018_092",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 18,
+      "ayahs": [
+        92,
+        92
+      ],
+      "parts": [
+        92
+      ],
+      "words": 3,
+      "file": "Husary_Muallim_128kbps/018_092.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/019_057",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 19,
+      "ayahs": [
+        57,
+        57
+      ],
+      "parts": [
+        57
+      ],
+      "words": 3,
+      "file": "Husary_64kbps/019_057.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/026_046",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 26,
+      "ayahs": [
+        46,
+        46
+      ],
+      "parts": [
+        46
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/026_046.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/026_108",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 26,
+      "ayahs": [
+        108,
+        108
+      ],
+      "parts": [
+        108
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/026_108.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/026_157",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 26,
+      "ayahs": [
+        157,
+        157
+      ],
+      "parts": [
+        157
+      ],
+      "words": 3,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/026_157.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/044_043",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 44,
+      "ayahs": [
+        43,
+        43
+      ],
+      "parts": [
+        43
+      ],
+      "words": 3,
+      "file": "Husary_Muallim_128kbps/044_043.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/044_046",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 44,
+      "ayahs": [
+        46,
+        46
+      ],
+      "parts": [
+        46
+      ],
+      "words": 2,
+      "file": "Husary_64kbps/044_046.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/052_001",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 52,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Alafasy_64kbps/052_001.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/053_008",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 53,
+      "ayahs": [
+        8,
+        8
+      ],
+      "parts": [
+        8
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/053_008.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/053_037",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 53,
+      "ayahs": [
+        37,
+        37
+      ],
+      "parts": [
+        37
+      ],
+      "words": 3,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/053_037.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/055_001",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 55,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_Muallim_128kbps/055_001.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/055_064",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 55,
+      "ayahs": [
+        64,
+        64
+      ],
+      "parts": [
+        64
+      ],
+      "words": 1,
+      "file": "Husary_64kbps/055_064.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/055_066",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 55,
+      "ayahs": [
+        66,
+        66
+      ],
+      "parts": [
+        66
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/055_066.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/056_040",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 56,
+      "ayahs": [
+        40,
+        40
+      ],
+      "parts": [
+        40
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/056_040.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/056_084",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 56,
+      "ayahs": [
+        84,
+        84
+      ],
+      "parts": [
+        84
+      ],
+      "words": 3,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/056_084.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/069_001",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 69,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_Muallim_128kbps/069_001.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/070_013",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 70,
+      "ayahs": [
+        13,
+        13
+      ],
+      "parts": [
+        13
+      ],
+      "words": 3,
+      "file": "Husary_64kbps/070_013.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/073_001",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 73,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 2,
+      "file": "Alafasy_64kbps/073_001.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/074_014",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 74,
+      "ayahs": [
+        14,
+        14
+      ],
+      "parts": [
+        14
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/074_014.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/074_022",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 74,
+      "ayahs": [
+        22,
+        22
+      ],
+      "parts": [
+        22
+      ],
+      "words": 3,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/074_022.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/074_034",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 74,
+      "ayahs": [
+        34,
+        34
+      ],
+      "parts": [
+        34
+      ],
+      "words": 3,
+      "file": "Husary_Muallim_128kbps/074_034.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/074_050",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 74,
+      "ayahs": [
+        50,
+        50
+      ],
+      "parts": [
+        50
+      ],
+      "words": 3,
+      "file": "Husary_64kbps/074_050.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/078_011",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 78,
+      "ayahs": [
+        11,
+        11
+      ],
+      "parts": [
+        11
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/078_011.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/080_002",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 80,
+      "ayahs": [
+        2,
+        2
+      ],
+      "parts": [
+        2
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/080_002.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/081_009",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 81,
+      "ayahs": [
+        9,
+        9
+      ],
+      "parts": [
+        9
+      ],
+      "words": 3,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/081_009.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/085_002",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 85,
+      "ayahs": [
+        2,
+        2
+      ],
+      "parts": [
+        2
+      ],
+      "words": 2,
+      "file": "Husary_Muallim_128kbps/085_002.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/085_014",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 85,
+      "ayahs": [
+        14,
+        14
+      ],
+      "parts": [
+        14
+      ],
+      "words": 3,
+      "file": "Husary_64kbps/085_014.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/086_003",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 86,
+      "ayahs": [
+        3,
+        3
+      ],
+      "parts": [
+        3
+      ],
+      "words": 2,
+      "file": "Alafasy_64kbps/086_003.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/086_012",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 86,
+      "ayahs": [
+        12,
+        12
+      ],
+      "parts": [
+        12
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/086_012.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/088_015",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 88,
+      "ayahs": [
+        15,
+        15
+      ],
+      "parts": [
+        15
+      ],
+      "words": 2,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/088_015.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/088_016",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 88,
+      "ayahs": [
+        16,
+        16
+      ],
+      "parts": [
+        16
+      ],
+      "words": 2,
+      "file": "Husary_Muallim_128kbps/088_016.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/089_001",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 89,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_64kbps/089_001.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/090_010",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 90,
+      "ayahs": [
+        10,
+        10
+      ],
+      "parts": [
+        10
+      ],
+      "words": 2,
+      "file": "Alafasy_64kbps/090_010.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/090_020",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 90,
+      "ayahs": [
+        20,
+        20
+      ],
+      "parts": [
+        20
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/090_020.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/092_006",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 92,
+      "ayahs": [
+        6,
+        6
+      ],
+      "parts": [
+        6
+      ],
+      "words": 2,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/092_006.mp3"
+    },
+    {
+      "id": "short/Husary_Muallim_128kbps/093_001",
+      "stratum": "short",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 93,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Husary_Muallim_128kbps/093_001.mp3"
+    },
+    {
+      "id": "short/Husary_64kbps/096_003",
+      "stratum": "short",
+      "reciter": "Husary_64kbps",
+      "surah": 96,
+      "ayahs": [
+        3,
+        3
+      ],
+      "parts": [
+        3
+      ],
+      "words": 3,
+      "file": "Husary_64kbps/096_003.mp3"
+    },
+    {
+      "id": "short/Alafasy_64kbps/096_016",
+      "stratum": "short",
+      "reciter": "Alafasy_64kbps",
+      "surah": 96,
+      "ayahs": [
+        16,
+        16
+      ],
+      "parts": [
+        16
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/096_016.mp3"
+    },
+    {
+      "id": "short/Abdul_Basit_Murattal_64kbps/101_001",
+      "stratum": "short",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 101,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdul_Basit_Murattal_64kbps/101_001.mp3"
+    },
+    {
+      "id": "short/Abdurrahmaan_As-Sudais_192kbps/103_001",
+      "stratum": "short",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 103,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 1,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/103_001.mp3"
+    },
+    {
+      "id": "neighbours/Husary_64kbps/002_257",
+      "stratum": "neighbours",
+      "reciter": "Husary_64kbps",
+      "surah": 2,
+      "ayahs": [
+        257,
+        257
+      ],
+      "parts": [
+        257
+      ],
+      "words": 24,
+      "file": "Husary_64kbps/002_257.mp3"
+    },
+    {
+      "id": "neighbours/Abdul_Basit_Murattal_64kbps/005_008",
+      "stratum": "neighbours",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 5,
+      "ayahs": [
+        8,
+        8
+      ],
+      "parts": [
+        8
+      ],
+      "words": 26,
+      "file": "Abdul_Basit_Murattal_64kbps/005_008.mp3"
+    },
+    {
+      "id": "neighbours/Alafasy_64kbps/005_019",
+      "stratum": "neighbours",
+      "reciter": "Alafasy_64kbps",
+      "surah": 5,
+      "ayahs": [
+        19,
+        19
+      ],
+      "parts": [
+        19
+      ],
+      "words": 28,
+      "file": "Alafasy_64kbps/005_019.mp3"
+    },
+    {
+      "id": "neighbours/Husary_Muallim_128kbps/005_072",
+      "stratum": "neighbours",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 5,
+      "ayahs": [
+        72,
+        72
+      ],
+      "parts": [
+        72
+      ],
+      "words": 33,
+      "file": "Husary_Muallim_128kbps/005_072.mp3"
+    },
+    {
+      "id": "neighbours/Abdurrahmaan_As-Sudais_192kbps/005_090",
+      "stratum": "neighbours",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 5,
+      "ayahs": [
+        90,
+        90
+      ],
+      "parts": [
+        90
+      ],
+      "words": 15,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/005_090.mp3"
+    },
+    {
+      "id": "neighbours/Husary_64kbps/006_099",
+      "stratum": "neighbours",
+      "reciter": "Husary_64kbps",
+      "surah": 6,
+      "ayahs": [
+        99,
+        99
+      ],
+      "parts": [
+        99
+      ],
+      "words": 44,
+      "file": "Husary_64kbps/006_099.mp3"
+    },
+    {
+      "id": "neighbours/Abdul_Basit_Murattal_64kbps/007_048",
+      "stratum": "neighbours",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 7,
+      "ayahs": [
+        48,
+        48
+      ],
+      "parts": [
+        48
+      ],
+      "words": 14,
+      "file": "Abdul_Basit_Murattal_64kbps/007_048.mp3"
+    },
+    {
+      "id": "neighbours/Alafasy_64kbps/010_007",
+      "stratum": "neighbours",
+      "reciter": "Alafasy_64kbps",
+      "surah": 10,
+      "ayahs": [
+        7,
+        7
+      ],
+      "parts": [
+        7
+      ],
+      "words": 15,
+      "file": "Alafasy_64kbps/010_007.mp3"
+    },
+    {
+      "id": "neighbours/Husary_Muallim_128kbps/022_001",
+      "stratum": "neighbours",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 22,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 9,
+      "file": "Husary_Muallim_128kbps/022_001.mp3"
+    },
+    {
+      "id": "neighbours/Abdurrahmaan_As-Sudais_192kbps/023_007",
+      "stratum": "neighbours",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 23,
+      "ayahs": [
+        7,
+        7
+      ],
+      "parts": [
+        7
+      ],
+      "words": 7,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/023_007.mp3"
+    },
+    {
+      "id": "neighbours/Husary_64kbps/023_087",
+      "stratum": "neighbours",
+      "reciter": "Husary_64kbps",
+      "surah": 23,
+      "ayahs": [
+        87,
+        87
+      ],
+      "parts": [
+        87
+      ],
+      "words": 5,
+      "file": "Husary_64kbps/023_087.mp3"
+    },
+    {
+      "id": "neighbours/Abdul_Basit_Murattal_64kbps/024_014",
+      "stratum": "neighbours",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 24,
+      "ayahs": [
+        14,
+        14
+      ],
+      "parts": [
+        14
+      ],
+      "words": 15,
+      "file": "Abdul_Basit_Murattal_64kbps/024_014.mp3"
+    },
+    {
+      "id": "neighbours/Alafasy_64kbps/026_024",
+      "stratum": "neighbours",
+      "reciter": "Alafasy_64kbps",
+      "surah": 26,
+      "ayahs": [
+        24,
+        24
+      ],
+      "parts": [
+        24
+      ],
+      "words": 9,
+      "file": "Alafasy_64kbps/026_024.mp3"
+    },
+    {
+      "id": "neighbours/Husary_Muallim_128kbps/026_028",
+      "stratum": "neighbours",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 26,
+      "ayahs": [
+        28,
+        28
+      ],
+      "parts": [
+        28
+      ],
+      "words": 9,
+      "file": "Husary_Muallim_128kbps/026_028.mp3"
+    },
+    {
+      "id": "neighbours/Abdurrahmaan_As-Sudais_192kbps/026_163",
+      "stratum": "neighbours",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 26,
+      "ayahs": [
+        163,
+        163
+      ],
+      "parts": [
+        163
+      ],
+      "words": 3,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/026_163.mp3"
+    },
+    {
+      "id": "neighbours/Husary_64kbps/027_058",
+      "stratum": "neighbours",
+      "reciter": "Husary_64kbps",
+      "surah": 27,
+      "ayahs": [
+        58,
+        58
+      ],
+      "parts": [
+        58
+      ],
+      "words": 6,
+      "file": "Husary_64kbps/027_058.mp3"
+    },
+    {
+      "id": "neighbours/Abdul_Basit_Murattal_64kbps/030_003",
+      "stratum": "neighbours",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 30,
+      "ayahs": [
+        3,
+        3
+      ],
+      "parts": [
+        3
+      ],
+      "words": 8,
+      "file": "Abdul_Basit_Murattal_64kbps/030_003.mp3"
+    },
+    {
+      "id": "neighbours/Alafasy_64kbps/036_046",
+      "stratum": "neighbours",
+      "reciter": "Alafasy_64kbps",
+      "surah": 36,
+      "ayahs": [
+        46,
+        46
+      ],
+      "parts": [
+        46
+      ],
+      "words": 11,
+      "file": "Alafasy_64kbps/036_046.mp3"
+    },
+    {
+      "id": "neighbours/Husary_Muallim_128kbps/036_047",
+      "stratum": "neighbours",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 36,
+      "ayahs": [
+        47,
+        47
+      ],
+      "parts": [
+        47
+      ],
+      "words": 24,
+      "file": "Husary_Muallim_128kbps/036_047.mp3"
+    },
+    {
+      "id": "neighbours/Abdurrahmaan_As-Sudais_192kbps/037_078",
+      "stratum": "neighbours",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 37,
+      "ayahs": [
+        78,
+        78
+      ],
+      "parts": [
+        78
+      ],
+      "words": 4,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/037_078.mp3"
+    },
+    {
+      "id": "neighbours/Husary_64kbps/053_045",
+      "stratum": "neighbours",
+      "reciter": "Husary_64kbps",
+      "surah": 53,
+      "ayahs": [
+        45,
+        45
+      ],
+      "parts": [
+        45
+      ],
+      "words": 5,
+      "file": "Husary_64kbps/053_045.mp3"
+    },
+    {
+      "id": "neighbours/Abdul_Basit_Murattal_64kbps/053_048",
+      "stratum": "neighbours",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 53,
+      "ayahs": [
+        48,
+        48
+      ],
+      "parts": [
+        48
+      ],
+      "words": 4,
+      "file": "Abdul_Basit_Murattal_64kbps/053_048.mp3"
+    },
+    {
+      "id": "neighbours/Alafasy_64kbps/053_050",
+      "stratum": "neighbours",
+      "reciter": "Alafasy_64kbps",
+      "surah": 53,
+      "ayahs": [
+        50,
+        50
+      ],
+      "parts": [
+        50
+      ],
+      "words": 4,
+      "file": "Alafasy_64kbps/053_050.mp3"
+    },
+    {
+      "id": "neighbours/Husary_Muallim_128kbps/057_020",
+      "stratum": "neighbours",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 57,
+      "ayahs": [
+        20,
+        20
+      ],
+      "parts": [
+        20
+      ],
+      "words": 39,
+      "file": "Husary_Muallim_128kbps/057_020.mp3"
+    },
+    {
+      "id": "neighbours/Abdurrahmaan_As-Sudais_192kbps/068_045",
+      "stratum": "neighbours",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 68,
+      "ayahs": [
+        45,
+        45
+      ],
+      "parts": [
+        45
+      ],
+      "words": 5,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/068_045.mp3"
+    },
+    {
+      "id": "neighbours/Husary_64kbps/077_038",
+      "stratum": "neighbours",
+      "reciter": "Husary_64kbps",
+      "surah": 77,
+      "ayahs": [
+        38,
+        38
+      ],
+      "parts": [
+        38
+      ],
+      "words": 5,
+      "file": "Husary_64kbps/077_038.mp3"
+    },
+    {
+      "id": "neighbours/Abdul_Basit_Murattal_64kbps/078_010",
+      "stratum": "neighbours",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 78,
+      "ayahs": [
+        10,
+        10
+      ],
+      "parts": [
+        10
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/078_010.mp3"
+    },
+    {
+      "id": "neighbours/Alafasy_64kbps/079_033",
+      "stratum": "neighbours",
+      "reciter": "Alafasy_64kbps",
+      "surah": 79,
+      "ayahs": [
+        33,
+        33
+      ],
+      "parts": [
+        33
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/079_033.mp3"
+    },
+    {
+      "id": "neighbours/Husary_Muallim_128kbps/081_027",
+      "stratum": "neighbours",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 81,
+      "ayahs": [
+        27,
+        27
+      ],
+      "parts": [
+        27
+      ],
+      "words": 5,
+      "file": "Husary_Muallim_128kbps/081_027.mp3"
+    },
+    {
+      "id": "neighbours/Abdurrahmaan_As-Sudais_192kbps/107_003",
+      "stratum": "neighbours",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 107,
+      "ayahs": [
+        3,
+        3
+      ],
+      "parts": [
+        3
+      ],
+      "words": 5,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/107_003.mp3"
+    },
+    {
+      "id": "runs/Husary_64kbps/001_001-003",
+      "stratum": "runs",
+      "reciter": "Husary_64kbps",
+      "surah": 1,
+      "ayahs": [
+        1,
+        3
+      ],
+      "parts": [
+        1,
+        2,
+        3
+      ],
+      "words": 10,
+      "file": "Husary_64kbps/001_001-003.flac"
+    },
+    {
+      "id": "runs/Husary_Muallim_128kbps/112_002-004",
+      "stratum": "runs",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 112,
+      "ayahs": [
+        2,
+        4
+      ],
+      "parts": [
+        2,
+        3,
+        4
+      ],
+      "words": 11,
+      "file": "Husary_Muallim_128kbps/112_002-004.flac"
+    },
+    {
+      "id": "runs/Abdurrahmaan_As-Sudais_192kbps/082_004-006",
+      "stratum": "runs",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 82,
+      "ayahs": [
+        4,
+        6
+      ],
+      "parts": [
+        4,
+        5,
+        6
+      ],
+      "words": 14,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/082_004-006.flac"
+    },
+    {
+      "id": "runs/Alafasy_64kbps/040_032-035",
+      "stratum": "runs",
+      "reciter": "Alafasy_64kbps",
+      "surah": 40,
+      "ayahs": [
+        32,
+        35
+      ],
+      "parts": [
+        32,
+        33,
+        34,
+        35
+      ],
+      "words": 75,
+      "file": "Alafasy_64kbps/040_032-035.flac"
+    },
+    {
+      "id": "runs/Abdul_Basit_Murattal_64kbps/054_015-018",
+      "stratum": "runs",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 54,
+      "ayahs": [
+        15,
+        18
+      ],
+      "parts": [
+        15,
+        16,
+        17,
+        18
+      ],
+      "words": 23,
+      "file": "Abdul_Basit_Murattal_64kbps/054_015-018.flac"
+    },
+    {
+      "id": "runs/Husary_64kbps/067_006-010",
+      "stratum": "runs",
+      "reciter": "Husary_64kbps",
+      "surah": 67,
+      "ayahs": [
+        6,
+        10
+      ],
+      "parts": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "words": 57,
+      "file": "Husary_64kbps/067_006-010.flac"
+    },
+    {
+      "id": "runs/Husary_Muallim_128kbps/043_044-048",
+      "stratum": "runs",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 43,
+      "ayahs": [
+        44,
+        48
+      ],
+      "parts": [
+        44,
+        45,
+        46,
+        47,
+        48
+      ],
+      "words": 51,
+      "file": "Husary_Muallim_128kbps/043_044-048.flac"
+    },
+    {
+      "id": "runs/Abdurrahmaan_As-Sudais_192kbps/017_081-085",
+      "stratum": "runs",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 17,
+      "ayahs": [
+        81,
+        85
+      ],
+      "parts": [
+        81,
+        82,
+        83,
+        84,
+        85
+      ],
+      "words": 59,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/017_081-085.flac"
+    },
+    {
+      "id": "runs/Alafasy_64kbps/059_013-015",
+      "stratum": "runs",
+      "reciter": "Alafasy_64kbps",
+      "surah": 59,
+      "ayahs": [
+        13,
+        15
+      ],
+      "parts": [
+        13,
+        14,
+        15
+      ],
+      "words": 46,
+      "file": "Alafasy_64kbps/059_013-015.flac"
+    },
+    {
+      "id": "runs/Abdul_Basit_Murattal_64kbps/006_074-077",
+      "stratum": "runs",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 6,
+      "ayahs": [
+        74,
+        77
+      ],
+      "parts": [
+        74,
+        75,
+        76,
+        77
+      ],
+      "words": 56,
+      "file": "Abdul_Basit_Murattal_64kbps/006_074-077.flac"
+    },
+    {
+      "id": "runs/Husary_64kbps/005_036-038",
+      "stratum": "runs",
+      "reciter": "Husary_64kbps",
+      "surah": 5,
+      "ayahs": [
+        36,
+        38
+      ],
+      "parts": [
+        36,
+        37,
+        38
+      ],
+      "words": 49,
+      "file": "Husary_64kbps/005_036-038.flac"
+    },
+    {
+      "id": "runs/Husary_Muallim_128kbps/102_005-008",
+      "stratum": "runs",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 102,
+      "ayahs": [
+        5,
+        8
+      ],
+      "parts": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "words": 16,
+      "file": "Husary_Muallim_128kbps/102_005-008.flac"
+    },
+    {
+      "id": "runs/Abdurrahmaan_As-Sudais_192kbps/038_021-023",
+      "stratum": "runs",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 38,
+      "ayahs": [
+        21,
+        23
+      ],
+      "parts": [
+        21,
+        22,
+        23
+      ],
+      "words": 45,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/038_021-023.flac"
+    },
+    {
+      "id": "runs/Alafasy_64kbps/029_026-028",
+      "stratum": "runs",
+      "reciter": "Alafasy_64kbps",
+      "surah": 29,
+      "ayahs": [
+        26,
+        28
+      ],
+      "parts": [
+        26,
+        27,
+        28
+      ],
+      "words": 44,
+      "file": "Alafasy_64kbps/029_026-028.flac"
+    },
+    {
+      "id": "runs/Abdul_Basit_Murattal_64kbps/106_002-004",
+      "stratum": "runs",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 106,
+      "ayahs": [
+        2,
+        4
+      ],
+      "parts": [
+        2,
+        3,
+        4
+      ],
+      "words": 15,
+      "file": "Abdul_Basit_Murattal_64kbps/106_002-004.flac"
+    },
+    {
+      "id": "runs/Husary_64kbps/075_038-040",
+      "stratum": "runs",
+      "reciter": "Husary_64kbps",
+      "surah": 75,
+      "ayahs": [
+        38,
+        40
+      ],
+      "parts": [
+        38,
+        39,
+        40
+      ],
+      "words": 17,
+      "file": "Husary_64kbps/075_038-040.flac"
+    },
+    {
+      "id": "runs/Husary_Muallim_128kbps/012_094-098",
+      "stratum": "runs",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 12,
+      "ayahs": [
+        94,
+        98
+      ],
+      "parts": [
+        94,
+        95,
+        96,
+        97,
+        98
+      ],
+      "words": 55,
+      "file": "Husary_Muallim_128kbps/012_094-098.flac"
+    },
+    {
+      "id": "runs/Abdurrahmaan_As-Sudais_192kbps/084_004-006",
+      "stratum": "runs",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 84,
+      "ayahs": [
+        4,
+        6
+      ],
+      "parts": [
+        4,
+        5,
+        6
+      ],
+      "words": 15,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/084_004-006.flac"
+    },
+    {
+      "id": "runs/Alafasy_64kbps/028_070-073",
+      "stratum": "runs",
+      "reciter": "Alafasy_64kbps",
+      "surah": 28,
+      "ayahs": [
+        70,
+        73
+      ],
+      "parts": [
+        70,
+        71,
+        72,
+        73
+      ],
+      "words": 68,
+      "file": "Alafasy_64kbps/028_070-073.flac"
+    },
+    {
+      "id": "runs/Abdul_Basit_Murattal_64kbps/003_081-084",
+      "stratum": "runs",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 3,
+      "ayahs": [
+        81,
+        84
+      ],
+      "parts": [
+        81,
+        82,
+        83,
+        84
+      ],
+      "words": 83,
+      "file": "Abdul_Basit_Murattal_64kbps/003_081-084.flac"
+    },
+    {
+      "id": "runs/Husary_64kbps/064_013-017",
+      "stratum": "runs",
+      "reciter": "Husary_64kbps",
+      "surah": 64,
+      "ayahs": [
+        13,
+        17
+      ],
+      "parts": [
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "words": 63,
+      "file": "Husary_64kbps/064_013-017.flac"
+    },
+    {
+      "id": "runs/Husary_Muallim_128kbps/089_011-014",
+      "stratum": "runs",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 89,
+      "ayahs": [
+        11,
+        14
+      ],
+      "parts": [
+        11,
+        12,
+        13,
+        14
+      ],
+      "words": 15,
+      "file": "Husary_Muallim_128kbps/089_011-014.flac"
+    },
+    {
+      "id": "runs/Abdurrahmaan_As-Sudais_192kbps/018_063-067",
+      "stratum": "runs",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 18,
+      "ayahs": [
+        63,
+        67
+      ],
+      "parts": [
+        63,
+        64,
+        65,
+        66,
+        67
+      ],
+      "words": 58,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/018_063-067.flac"
+    },
+    {
+      "id": "runs/Alafasy_64kbps/028_025-028",
+      "stratum": "runs",
+      "reciter": "Alafasy_64kbps",
+      "surah": 28,
+      "ayahs": [
+        25,
+        28
+      ],
+      "parts": [
+        25,
+        26,
+        27,
+        28
+      ],
+      "words": 80,
+      "file": "Alafasy_64kbps/028_025-028.flac"
+    },
+    {
+      "id": "runs/Abdul_Basit_Murattal_64kbps/028_041-045",
+      "stratum": "runs",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 28,
+      "ayahs": [
+        41,
+        45
+      ],
+      "parts": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "words": 66,
+      "file": "Abdul_Basit_Murattal_64kbps/028_041-045.flac"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/002_103",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 2,
+      "ayahs": [
+        103,
+        103
+      ],
+      "parts": [
+        103
+      ],
+      "words": 12,
+      "file": "Abdul_Basit_Murattal_64kbps/002_103.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/002_129",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 2,
+      "ayahs": [
+        129,
+        129
+      ],
+      "parts": [
+        129
+      ],
+      "words": 16,
+      "file": "Husary_Muallim_128kbps/002_129.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/002_154",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 2,
+      "ayahs": [
+        154,
+        154
+      ],
+      "parts": [
+        154
+      ],
+      "words": 13,
+      "file": "Alafasy_64kbps/002_154.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/002_208",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 2,
+      "ayahs": [
+        208,
+        208
+      ],
+      "parts": [
+        208
+      ],
+      "words": 15,
+      "file": "Husary_64kbps/002_208.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/002_228",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 2,
+      "ayahs": [
+        228,
+        228
+      ],
+      "parts": [
+        228
+      ],
+      "words": 40,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/002_228.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/003_016",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 3,
+      "ayahs": [
+        16,
+        16
+      ],
+      "parts": [
+        16
+      ],
+      "words": 11,
+      "file": "Abdul_Basit_Murattal_64kbps/003_016.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/003_068",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 3,
+      "ayahs": [
+        68,
+        68
+      ],
+      "parts": [
+        68
+      ],
+      "words": 13,
+      "file": "Husary_Muallim_128kbps/003_068.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/004_068",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 4,
+      "ayahs": [
+        68,
+        68
+      ],
+      "parts": [
+        68
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/004_068.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/004_098",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 4,
+      "ayahs": [
+        98,
+        98
+      ],
+      "parts": [
+        98
+      ],
+      "words": 12,
+      "file": "Husary_64kbps/004_098.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/004_124",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 4,
+      "ayahs": [
+        124,
+        124
+      ],
+      "parts": [
+        124
+      ],
+      "words": 16,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/004_124.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/005_068",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 5,
+      "ayahs": [
+        68,
+        68
+      ],
+      "parts": [
+        68
+      ],
+      "words": 30,
+      "file": "Abdul_Basit_Murattal_64kbps/005_068.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/006_017",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 6,
+      "ayahs": [
+        17,
+        17
+      ],
+      "parts": [
+        17
+      ],
+      "words": 17,
+      "file": "Husary_Muallim_128kbps/006_017.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/006_036",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 6,
+      "ayahs": [
+        36,
+        36
+      ],
+      "parts": [
+        36
+      ],
+      "words": 10,
+      "file": "Alafasy_64kbps/006_036.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/006_046",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 6,
+      "ayahs": [
+        46,
+        46
+      ],
+      "parts": [
+        46
+      ],
+      "words": 23,
+      "file": "Husary_64kbps/006_046.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/007_015",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 7,
+      "ayahs": [
+        15,
+        15
+      ],
+      "parts": [
+        15
+      ],
+      "words": 4,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/007_015.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/007_019",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 7,
+      "ayahs": [
+        19,
+        19
+      ],
+      "parts": [
+        19
+      ],
+      "words": 16,
+      "file": "Abdul_Basit_Murattal_64kbps/007_019.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/007_096",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 7,
+      "ayahs": [
+        96,
+        96
+      ],
+      "parts": [
+        96
+      ],
+      "words": 18,
+      "file": "Husary_Muallim_128kbps/007_096.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/007_112",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 7,
+      "ayahs": [
+        112,
+        112
+      ],
+      "parts": [
+        112
+      ],
+      "words": 4,
+      "file": "Alafasy_64kbps/007_112.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/008_032",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 8,
+      "ayahs": [
+        32,
+        32
+      ],
+      "parts": [
+        32
+      ],
+      "words": 19,
+      "file": "Husary_64kbps/008_032.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/009_001",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 9,
+      "ayahs": [
+        1,
+        1
+      ],
+      "parts": [
+        1
+      ],
+      "words": 9,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/009_001.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/009_011",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 9,
+      "ayahs": [
+        11,
+        11
+      ],
+      "parts": [
+        11
+      ],
+      "words": 13,
+      "file": "Abdul_Basit_Murattal_64kbps/009_011.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/009_020",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 9,
+      "ayahs": [
+        20,
+        20
+      ],
+      "parts": [
+        20
+      ],
+      "words": 16,
+      "file": "Husary_Muallim_128kbps/009_020.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/009_055",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 9,
+      "ayahs": [
+        55,
+        55
+      ],
+      "parts": [
+        55
+      ],
+      "words": 17,
+      "file": "Alafasy_64kbps/009_055.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/010_015",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 10,
+      "ayahs": [
+        15,
+        15
+      ],
+      "parts": [
+        15
+      ],
+      "words": 39,
+      "file": "Husary_64kbps/010_015.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/010_019",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 10,
+      "ayahs": [
+        19,
+        19
+      ],
+      "parts": [
+        19
+      ],
+      "words": 17,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/010_019.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/011_007",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 11,
+      "ayahs": [
+        7,
+        7
+      ],
+      "parts": [
+        7
+      ],
+      "words": 31,
+      "file": "Abdul_Basit_Murattal_64kbps/011_007.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/011_023",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 11,
+      "ayahs": [
+        23,
+        23
+      ],
+      "parts": [
+        23
+      ],
+      "words": 14,
+      "file": "Husary_Muallim_128kbps/011_023.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/011_080",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 11,
+      "ayahs": [
+        80,
+        80
+      ],
+      "parts": [
+        80
+      ],
+      "words": 11,
+      "file": "Alafasy_64kbps/011_080.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/014_050",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 14,
+      "ayahs": [
+        50,
+        50
+      ],
+      "parts": [
+        50
+      ],
+      "words": 6,
+      "file": "Husary_64kbps/014_050.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/015_062",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 15,
+      "ayahs": [
+        62,
+        62
+      ],
+      "parts": [
+        62
+      ],
+      "words": 4,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/015_062.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/015_094",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 15,
+      "ayahs": [
+        94,
+        94
+      ],
+      "parts": [
+        94
+      ],
+      "words": 6,
+      "file": "Abdul_Basit_Murattal_64kbps/015_094.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/015_099",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 15,
+      "ayahs": [
+        99,
+        99
+      ],
+      "parts": [
+        99
+      ],
+      "words": 5,
+      "file": "Husary_Muallim_128kbps/015_099.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/016_031",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 16,
+      "ayahs": [
+        31,
+        31
+      ],
+      "parts": [
+        31
+      ],
+      "words": 15,
+      "file": "Alafasy_64kbps/016_031.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/016_040",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 16,
+      "ayahs": [
+        40,
+        40
+      ],
+      "parts": [
+        40
+      ],
+      "words": 10,
+      "file": "Husary_64kbps/016_040.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/016_068",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 16,
+      "ayahs": [
+        68,
+        68
+      ],
+      "parts": [
+        68
+      ],
+      "words": 13,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/016_068.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/016_085",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 16,
+      "ayahs": [
+        85,
+        85
+      ],
+      "parts": [
+        85
+      ],
+      "words": 11,
+      "file": "Abdul_Basit_Murattal_64kbps/016_085.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/017_020",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 17,
+      "ayahs": [
+        20,
+        20
+      ],
+      "parts": [
+        20
+      ],
+      "words": 12,
+      "file": "Husary_Muallim_128kbps/017_020.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/017_021",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 17,
+      "ayahs": [
+        21,
+        21
+      ],
+      "parts": [
+        21
+      ],
+      "words": 11,
+      "file": "Alafasy_64kbps/017_021.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/017_096",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 17,
+      "ayahs": [
+        96,
+        96
+      ],
+      "parts": [
+        96
+      ],
+      "words": 11,
+      "file": "Husary_64kbps/017_096.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/018_012",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 18,
+      "ayahs": [
+        12,
+        12
+      ],
+      "parts": [
+        12
+      ],
+      "words": 9,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/018_012.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/018_081",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 18,
+      "ayahs": [
+        81,
+        81
+      ],
+      "parts": [
+        81
+      ],
+      "words": 9,
+      "file": "Abdul_Basit_Murattal_64kbps/018_081.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/019_012",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 19,
+      "ayahs": [
+        12,
+        12
+      ],
+      "parts": [
+        12
+      ],
+      "words": 7,
+      "file": "Husary_Muallim_128kbps/019_012.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/020_117",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 20,
+      "ayahs": [
+        117,
+        117
+      ],
+      "parts": [
+        117
+      ],
+      "words": 12,
+      "file": "Alafasy_64kbps/020_117.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/021_017",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 21,
+      "ayahs": [
+        17,
+        17
+      ],
+      "parts": [
+        17
+      ],
+      "words": 11,
+      "file": "Husary_64kbps/021_017.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/021_061",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 21,
+      "ayahs": [
+        61,
+        61
+      ],
+      "parts": [
+        61
+      ],
+      "words": 8,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/021_061.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/021_082",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 21,
+      "ayahs": [
+        82,
+        82
+      ],
+      "parts": [
+        82
+      ],
+      "words": 12,
+      "file": "Abdul_Basit_Murattal_64kbps/021_082.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/023_062",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 23,
+      "ayahs": [
+        62,
+        62
+      ],
+      "parts": [
+        62
+      ],
+      "words": 12,
+      "file": "Husary_Muallim_128kbps/023_062.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/025_028",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 25,
+      "ayahs": [
+        28,
+        28
+      ],
+      "parts": [
+        28
+      ],
+      "words": 6,
+      "file": "Alafasy_64kbps/025_028.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/026_106",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 26,
+      "ayahs": [
+        106,
+        106
+      ],
+      "parts": [
+        106
+      ],
+      "words": 7,
+      "file": "Husary_64kbps/026_106.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/026_135",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 26,
+      "ayahs": [
+        135,
+        135
+      ],
+      "parts": [
+        135
+      ],
+      "words": 6,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/026_135.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/027_031",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 27,
+      "ayahs": [
+        31,
+        31
+      ],
+      "parts": [
+        31
+      ],
+      "words": 5,
+      "file": "Abdul_Basit_Murattal_64kbps/027_031.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/033_008",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 33,
+      "ayahs": [
+        8,
+        8
+      ],
+      "parts": [
+        8
+      ],
+      "words": 8,
+      "file": "Husary_Muallim_128kbps/033_008.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/033_022",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 33,
+      "ayahs": [
+        22,
+        22
+      ],
+      "parts": [
+        22
+      ],
+      "words": 18,
+      "file": "Alafasy_64kbps/033_022.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/034_043",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 34,
+      "ayahs": [
+        43,
+        43
+      ],
+      "parts": [
+        43
+      ],
+      "words": 34,
+      "file": "Husary_64kbps/034_043.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/035_043",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 35,
+      "ayahs": [
+        43,
+        43
+      ],
+      "parts": [
+        43
+      ],
+      "words": 26,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/035_043.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/036_008",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 36,
+      "ayahs": [
+        8,
+        8
+      ],
+      "parts": [
+        8
+      ],
+      "words": 10,
+      "file": "Abdul_Basit_Murattal_64kbps/036_008.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/036_031",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 36,
+      "ayahs": [
+        31,
+        31
+      ],
+      "parts": [
+        31
+      ],
+      "words": 11,
+      "file": "Husary_Muallim_128kbps/036_031.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/036_056",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 36,
+      "ayahs": [
+        56,
+        56
+      ],
+      "parts": [
+        56
+      ],
+      "words": 7,
+      "file": "Alafasy_64kbps/036_056.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/037_088",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 37,
+      "ayahs": [
+        88,
+        88
+      ],
+      "parts": [
+        88
+      ],
+      "words": 4,
+      "file": "Husary_64kbps/037_088.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/037_158",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 37,
+      "ayahs": [
+        158,
+        158
+      ],
+      "parts": [
+        158
+      ],
+      "words": 10,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/037_158.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/037_162",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 37,
+      "ayahs": [
+        162,
+        162
+      ],
+      "parts": [
+        162
+      ],
+      "words": 4,
+      "file": "Abdul_Basit_Murattal_64kbps/037_162.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/038_010",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 38,
+      "ayahs": [
+        10,
+        10
+      ],
+      "parts": [
+        10
+      ],
+      "words": 10,
+      "file": "Husary_Muallim_128kbps/038_010.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/038_016",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 38,
+      "ayahs": [
+        16,
+        16
+      ],
+      "parts": [
+        16
+      ],
+      "words": 8,
+      "file": "Alafasy_64kbps/038_016.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/040_006",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 40,
+      "ayahs": [
+        6,
+        6
+      ],
+      "parts": [
+        6
+      ],
+      "words": 10,
+      "file": "Husary_64kbps/040_006.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/040_045",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 40,
+      "ayahs": [
+        45,
+        45
+      ],
+      "parts": [
+        45
+      ],
+      "words": 10,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/040_045.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/040_060",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 40,
+      "ayahs": [
+        60,
+        60
+      ],
+      "parts": [
+        60
+      ],
+      "words": 13,
+      "file": "Abdul_Basit_Murattal_64kbps/040_060.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/041_007",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 41,
+      "ayahs": [
+        7,
+        7
+      ],
+      "parts": [
+        7
+      ],
+      "words": 8,
+      "file": "Husary_Muallim_128kbps/041_007.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/041_049",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 41,
+      "ayahs": [
+        49,
+        49
+      ],
+      "parts": [
+        49
+      ],
+      "words": 11,
+      "file": "Alafasy_64kbps/041_049.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/043_025",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 43,
+      "ayahs": [
+        25,
+        25
+      ],
+      "parts": [
+        25
+      ],
+      "words": 7,
+      "file": "Husary_64kbps/043_025.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/043_034",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 43,
+      "ayahs": [
+        34,
+        34
+      ],
+      "parts": [
+        34
+      ],
+      "words": 5,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/043_034.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/043_070",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 43,
+      "ayahs": [
+        70,
+        70
+      ],
+      "parts": [
+        70
+      ],
+      "words": 5,
+      "file": "Abdul_Basit_Murattal_64kbps/043_070.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/044_054",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 44,
+      "ayahs": [
+        54,
+        54
+      ],
+      "parts": [
+        54
+      ],
+      "words": 4,
+      "file": "Husary_Muallim_128kbps/044_054.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/045_006",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 45,
+      "ayahs": [
+        6,
+        6
+      ],
+      "parts": [
+        6
+      ],
+      "words": 12,
+      "file": "Alafasy_64kbps/045_006.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/045_026",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 45,
+      "ayahs": [
+        26,
+        26
+      ],
+      "parts": [
+        26
+      ],
+      "words": 18,
+      "file": "Husary_64kbps/045_026.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/045_028",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 45,
+      "ayahs": [
+        28,
+        28
+      ],
+      "parts": [
+        28
+      ],
+      "words": 14,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/045_028.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/045_035",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 45,
+      "ayahs": [
+        35,
+        35
+      ],
+      "parts": [
+        35
+      ],
+      "words": 16,
+      "file": "Abdul_Basit_Murattal_64kbps/045_035.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/046_002",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 46,
+      "ayahs": [
+        2,
+        2
+      ],
+      "parts": [
+        2
+      ],
+      "words": 6,
+      "file": "Husary_Muallim_128kbps/046_002.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/046_009",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 46,
+      "ayahs": [
+        9,
+        9
+      ],
+      "parts": [
+        9
+      ],
+      "words": 24,
+      "file": "Alafasy_64kbps/046_009.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/051_033",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 51,
+      "ayahs": [
+        33,
+        33
+      ],
+      "parts": [
+        33
+      ],
+      "words": 5,
+      "file": "Husary_64kbps/051_033.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/051_037",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 51,
+      "ayahs": [
+        37,
+        37
+      ],
+      "parts": [
+        37
+      ],
+      "words": 7,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/051_037.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/053_024",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 53,
+      "ayahs": [
+        24,
+        24
+      ],
+      "parts": [
+        24
+      ],
+      "words": 4,
+      "file": "Abdul_Basit_Murattal_64kbps/053_024.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/053_055",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 53,
+      "ayahs": [
+        55,
+        55
+      ],
+      "parts": [
+        55
+      ],
+      "words": 4,
+      "file": "Husary_Muallim_128kbps/053_055.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/054_031",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 54,
+      "ayahs": [
+        31,
+        31
+      ],
+      "parts": [
+        31
+      ],
+      "words": 8,
+      "file": "Alafasy_64kbps/054_031.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/054_033",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 54,
+      "ayahs": [
+        33,
+        33
+      ],
+      "parts": [
+        33
+      ],
+      "words": 4,
+      "file": "Husary_64kbps/054_033.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/054_042",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 54,
+      "ayahs": [
+        42,
+        42
+      ],
+      "parts": [
+        42
+      ],
+      "words": 7,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/054_042.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/056_014",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 56,
+      "ayahs": [
+        14,
+        14
+      ],
+      "parts": [
+        14
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/056_014.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/057_024",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 57,
+      "ayahs": [
+        24,
+        24
+      ],
+      "parts": [
+        24
+      ],
+      "words": 12,
+      "file": "Husary_Muallim_128kbps/057_024.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/059_006",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 59,
+      "ayahs": [
+        6,
+        6
+      ],
+      "parts": [
+        6
+      ],
+      "words": 25,
+      "file": "Alafasy_64kbps/059_006.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/062_004",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 62,
+      "ayahs": [
+        4,
+        4
+      ],
+      "parts": [
+        4
+      ],
+      "words": 10,
+      "file": "Husary_64kbps/062_004.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/062_010",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 62,
+      "ayahs": [
+        10,
+        10
+      ],
+      "parts": [
+        10
+      ],
+      "words": 15,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/062_010.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/069_050",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 69,
+      "ayahs": [
+        50,
+        50
+      ],
+      "parts": [
+        50
+      ],
+      "words": 4,
+      "file": "Abdul_Basit_Murattal_64kbps/069_050.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/070_003",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 70,
+      "ayahs": [
+        3,
+        3
+      ],
+      "parts": [
+        3
+      ],
+      "words": 4,
+      "file": "Husary_Muallim_128kbps/070_003.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/075_014",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 75,
+      "ayahs": [
+        14,
+        14
+      ],
+      "parts": [
+        14
+      ],
+      "words": 5,
+      "file": "Alafasy_64kbps/075_014.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/077_013",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 77,
+      "ayahs": [
+        13,
+        13
+      ],
+      "parts": [
+        13
+      ],
+      "words": 2,
+      "file": "Husary_64kbps/077_013.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/079_024",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 79,
+      "ayahs": [
+        24,
+        24
+      ],
+      "parts": [
+        24
+      ],
+      "words": 4,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/079_024.mp3"
+    },
+    {
+      "id": "random/Abdul_Basit_Murattal_64kbps/079_038",
+      "stratum": "random",
+      "reciter": "Abdul_Basit_Murattal_64kbps",
+      "surah": 79,
+      "ayahs": [
+        38,
+        38
+      ],
+      "parts": [
+        38
+      ],
+      "words": 3,
+      "file": "Abdul_Basit_Murattal_64kbps/079_038.mp3"
+    },
+    {
+      "id": "random/Husary_Muallim_128kbps/080_023",
+      "stratum": "random",
+      "reciter": "Husary_Muallim_128kbps",
+      "surah": 80,
+      "ayahs": [
+        23,
+        23
+      ],
+      "parts": [
+        23
+      ],
+      "words": 5,
+      "file": "Husary_Muallim_128kbps/080_023.mp3"
+    },
+    {
+      "id": "random/Alafasy_64kbps/088_022",
+      "stratum": "random",
+      "reciter": "Alafasy_64kbps",
+      "surah": 88,
+      "ayahs": [
+        22,
+        22
+      ],
+      "parts": [
+        22
+      ],
+      "words": 3,
+      "file": "Alafasy_64kbps/088_022.mp3"
+    },
+    {
+      "id": "random/Husary_64kbps/091_014",
+      "stratum": "random",
+      "reciter": "Husary_64kbps",
+      "surah": 91,
+      "ayahs": [
+        14,
+        14
+      ],
+      "parts": [
+        14
+      ],
+      "words": 7,
+      "file": "Husary_64kbps/091_014.mp3"
+    },
+    {
+      "id": "random/Abdurrahmaan_As-Sudais_192kbps/104_002",
+      "stratum": "random",
+      "reciter": "Abdurrahmaan_As-Sudais_192kbps",
+      "surah": 104,
+      "ayahs": [
+        2,
+        2
+      ],
+      "parts": [
+        2
+      ],
+      "words": 4,
+      "file": "Abdurrahmaan_As-Sudais_192kbps/104_002.mp3"
+    }
+  ]
+}

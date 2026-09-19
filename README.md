@@ -163,8 +163,56 @@ red. The two recordings with a deliberate mistake must keep catching it, so a
 change that "improves" the rate by quietly missing real mistakes cannot pass
 unnoticed.
 
-Current: **85.1% coverage, 0.6% false alarms, 2/2 caught** — down from 38.6%
-false alarms and 1/2 caught.
+Current: **100% coverage, 5.3% false alarms, 2/2 caught** over 12 recordings.
+
+The rate went up when the corpus got honest. Eleven of those twelve are short
+surahs recorded for testing and score 2.5%; the twelfth is a whole Mushaf page
+of An-Nisa recited into a room microphone at speaking pace, and it scores 10%.
+That one recording is worth more than the other eleven, because it is the only
+one recorded in the conditions the app is actually used in.
+
+### The fetched corpus
+
+Eleven hand-made recordings by one reciter is not a measurement of the app, it
+is a measurement of the corpus — and two of the eleven turned out to be
+labelled with ayahs they do not contain, because the labels were typed by
+hand. Published recitations fix both: the recitation is correct by
+construction, and the ground truth comes from the ayah number in the URL.
+
+```bash
+python scripts/fetch_recitations.py --plan      # what it would fetch, and on what terms
+python scripts/fetch_recitations.py --agree
+python scripts/benchmark_recordings.py --from-recitations
+```
+
+275 cases, 347 ayahs, five reciters from a very slow teaching pace to a fast
+one. The ayahs are chosen deliberately rather than at random, because uniform
+sampling over 6,236 ayahs gives mostly medium ayahs from the middle of the
+Quran and would miss every case that has ever broken this app:
+
+| stratum | why |
+|---|---|
+| `muqattaat` | all 30 — `الم` was invisible for months and `حم` still is |
+| `openings` | every session starts with one, and discovery refuses the basmala |
+| `long` | the hand-made corpus tops out at 17 words; 2:282 is 129 |
+| `short` | includes every one-word ayah in the Quran |
+| `neighbours` | 83:14 and 83:18 both open `كَلَّا`, and the tracker took the wrong one |
+| `runs` | 3–5 consecutive ayahs — gap-fill, page turns, tracking across a boundary |
+| `random` | the ordinary ayah, as a control |
+
+The report breaks every number down **per stratum and per reciter**. One
+overall number hides a category failing completely, which is exactly how
+`surah ala 11` scored zero for months.
+
+**What this corpus cannot do.** A correct recitation contains no mistakes, so
+it moves coverage and false alarms and nothing else — `DELIBERATE MISTAKES`
+still comes only from a human reciting one wrong on purpose. A corpus that
+only measures false alarms rewards an app that says nothing, so run both.
+
+The manifest (`tests/recitations/manifest.json`) is version controlled and the
+audio is not: these are somebody else's recordings, and a research corpus is
+not a licence to redistribute. The seed is committed, so the corpus is
+reproducible and a regression traces to a specific ayah rather than to luck.
 
 ### Recording your own cases
 
@@ -261,7 +309,9 @@ data/
   qcf_assets/               604 Mushaf pages + fonts
 logs/                       one log per run, newest 20 kept
 scripts/
-  benchmark_recordings.py   end-to-end benchmark (--from-session for captures)
+  benchmark_recordings.py   end-to-end benchmark (--from-session, --from-recitations)
+  recitation_corpus.py      which ayahs the fetched corpus holds, and why those
+  fetch_recitations.py      downloads them (audio gitignored, manifest committed)
   test_search_algorithm.py  search engine evaluation
 ```
 

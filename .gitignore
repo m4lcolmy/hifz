@@ -180,3 +180,9 @@ models-small/
 
 # Editor/tool artifacts
 .codex
+
+# Fetched recitations — somebody else's recordings. The manifest says what to
+# fetch and is committed; the audio is a cache that can be deleted and rebuilt
+# with `python scripts/fetch_recitations.py --agree`.
+tests/recitations/*
+!tests/recitations/manifest.json

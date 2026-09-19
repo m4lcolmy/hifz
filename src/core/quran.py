@@ -54,6 +54,40 @@ BASMALA = ("بسم", "الله", "الرحمن", "الرحيم")
 BASMALA_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
 
 
+def _boundary_span(trans_norm: list[str], ref_norm: list[str],
+                   i1: int, i2: int, j1: int, j2: int,
+                   limit: int = 3) -> tuple[int, int] | None:
+    """Is the head of this mismatch a misplaced space rather than a mistake?
+
+    Returns (heard_end, ref_end) when the heard tokens `trans_norm[i1:end]`
+    and the reference words `ref_norm[j1:end]` are the same letters with the
+    spaces in different places — one token covering several words, or several
+    covering one. Returns None otherwise.
+
+    Equality is exact on the normalized skeleton and on the *whole* joined
+    run, so there is exactly one way to read it. That is what makes this safe
+    to forgive: it says nothing about which letters were recited, only about
+    where the model chose to break them up.
+    """
+    # One heard token, several reference words: أَوْدَيْنٍ ← أَوْ دَيْنٍ
+    if i2 - i1 >= 1:
+        heard = trans_norm[i1]
+        joined = ""
+        for n in range(1, min(limit, j2 - j1) + 1):
+            joined += ref_norm[j1 + n - 1]
+            if n >= 2 and joined == heard:
+                return i1 + 1, j1 + n
+    # Several heard tokens, one reference word: فَلِ كُلِّ ← فَلِكُلِّ
+    if j2 - j1 >= 1:
+        whole = ref_norm[j1]
+        joined = ""
+        for n in range(1, min(limit, i2 - i1) + 1):
+            joined += trans_norm[i1 + n - 1]
+            if n >= 2 and joined == whole:
+                return i1 + n, j1 + 1
+    return None
+
+
 def _same_word(heard: str, expected: str) -> bool:
     """Equal, or one clipped by a window boundary — سم for بسم."""
     if heard == expected:
@@ -159,6 +193,15 @@ class QuranIndex:
                 self._ngram_index[key].append(i)
 
     # ── Discovery Mode ─────────────────────────────────────────────────
+
+    def is_solo_ayah(self, word: str) -> bool:
+        """Is this one word an entire ayah, and found nowhere else?
+
+        Asked by `match_for_mode` before it applies the two-word discovery
+        floor. يس and وَالْعَصْرِ are whole ayahs; refusing them for being one
+        word means they can never be found, only stepped over.
+        """
+        return DISCOVERY_SOLO_AYAH and normalize(word) in self._solo_ayah_index
 
     def discover(self, transcription: str) -> "VerseMatch | None":
         """Find where the user is reciting using exact N-gram matching.
@@ -546,6 +589,43 @@ class QuranIndex:
                         reference_index=ref_data[j][3],
                     ))
             elif op == "replace":
+                # One heard token spanning two reference words, or two heard
+                # tokens spanning one — a word *boundary* the model put in
+                # the wrong place, not a word it got wrong.
+                #
+                # The reciter says أَوْ دَيْنٍ and Whisper writes أَوْدَيْنٍ as a
+                # single token. Paired off positionally that token is charged
+                # against أَوْ, and دَيْنٍ against whatever follows, so one
+                # misplaced space costs two red words on a page where the
+                # reciter made no mistake at all. Measured on a real-
+                # conditions recording of 4:12, this happened three times in
+                # seventeen false alarms.
+                #
+                # Only an *exact* match on the joined skeleton is accepted.
+                # أَوْدَيْنٍ can be read as أَوْ + دَيْنٍ and as nothing else, so
+                # this forgives no letter and weakens no verdict — unlike a
+                # distance threshold, which would also forgive فَلَهُمْ for
+                # وَلَهُمْ. A merge is a fact about spacing; a substitution is
+                # a fact about letters.
+                span = _boundary_span(trans_norm, ref_norm, i1, i2, j1, j2)
+                if span is not None:
+                    ti_hi, tj_hi = span
+                    heard = "".join(trans_words[i1:ti_hi])
+                    whole = "".join(ref_words[j1:tj_hi])
+                    correct = self._diacritics_match(heard, whole)
+                    for j in range(j1, tj_hi):
+                        results.append(WordResult(
+                            recited=trans_words[i1] if i2 - i1 == 1 else heard,
+                            reference=ref_words[j],
+                            is_correct=correct,
+                            surah_id=ref_data[j][1],
+                            ayah_id=ref_data[j][2],
+                            reference_index=ref_data[j][3],
+                        ))
+                    if ti_hi >= i2 and tj_hi >= j2:
+                        continue
+                    i1, j1 = ti_hi, tj_hi
+
                 # Words already heard earlier in this same window. The model
                 # echoes them at a window tail — 23:7 ends الْعَادُونَ and the
                 # next window came back "...الْعَادُونَ فَمَنِ ابْتَغَى", which is

@@ -4,7 +4,7 @@ from PyQt6.QtGui import QFont
 
 # ── Color palette (Light Modern Theme) ────────────────────────────────────
 BG_PRIMARY = "#FFFFFF"       # white background
-BG_SURFACE = "#F9FAFB"       # soft gray for right panel
+BG_SURFACE = "#F9FAFB"       # soft gray surface
 BORDER = "#E5E7EB"           # subtle 1px borders
 TEXT_PRIMARY = "#000000"     # pure black text
 TEXT_SECONDARY = "#6B7280"   # muted gray text
@@ -31,23 +31,38 @@ STYLESHEET = f"""
         background-color: {BG_PRIMARY};
     }}
 
-    QSplitter::handle {{
-        background-color: {TEXT_PRIMARY};
-        width: 2px;
-    }}
-
-    /* The Magic Pill */
-    QWidget#pill {{
+    /* The bar. Square, full width, and part of the layout — so the page
+       above it is laid out in the space that is actually left, which is the
+       whole point of it not being a floating pill any more. */
+    QWidget#bar {{
         background-color: {BG_PRIMARY};
-        border: 1px solid {BORDER};
-        border-radius: 24px;
+        border-top: 1px solid {BORDER};
     }}
 
-    QLabel#status {{
+    QPushButton#bar_icon {{
+        background-color: transparent;
+        color: {TEXT_SECONDARY};
+        font-size: 17px;
+        border: none;
+        border-radius: 8px;
+    }}
+
+    QPushButton#bar_icon:hover {{
+        background-color: #F3F4F6;
         color: {TEXT_PRIMARY};
+    }}
+
+    QPushButton#bar_icon:pressed {{
+        background-color: #E5E7EB;
+    }}
+
+    /* Live state, at the end of the bar. Muted by default: it is there to
+       be glanced at, not read. */
+    QLabel#status {{
+        color: {TEXT_SECONDARY};
         font-size: 13px;
         font-weight: 500;
-        padding-left: 8px;
+        padding-right: 8px;
         background-color: transparent;
         border: none;
     }}
@@ -67,10 +82,10 @@ STYLESHEET = f"""
     QPushButton#record {{
         background-color: transparent;
         color: {TEXT_PRIMARY};
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 700;
         border: 1.5px solid {TEXT_PRIMARY};
-        border-radius: 18px;
+        border-radius: 20px;
         padding-top: 1px; /* Center the icon */
     }}
 
@@ -97,14 +112,38 @@ STYLESHEET = f"""
         background-color: {RECORD_HOVER};
     }}
 
-    QTextEdit#output {{
-        background-color: {BG_SURFACE};
+
+    /* The settings popup. The only menu in the app, and the only place a
+       mid-session decision lives. */
+    QMenu {{
+        background-color: {BG_PRIMARY};
+        border: 1px solid {BORDER};
+        border-radius: 12px;
+        padding: 6px;
+    }}
+
+    QMenu::item {{
+        padding: 7px 28px 7px 14px;
+        border-radius: 8px;
         color: {TEXT_PRIMARY};
-        border: none;
-        padding: 40px;
-        line-height: 1.6;
-        selection-background-color: #D1FAE5;
-        selection-color: #065F46;
+    }}
+
+    QMenu::item:selected {{
+        background-color: #F3F4F6;
+    }}
+
+    QMenu::item:disabled {{
+        color: {TEXT_SECONDARY};
+    }}
+
+    QMenu::item:checked {{
+        font-weight: 600;
+    }}
+
+    QMenu::separator {{
+        height: 1px;
+        background-color: {BORDER};
+        margin: 6px 10px;
     }}
 """
 

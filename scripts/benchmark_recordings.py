@@ -36,12 +36,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.audio.transcriber import transcribe_window
 from src.audio.vad import SlidingWindowBuffer
-from src.config import MODEL_DIR, DEVICE, USE_FP16, SAMPLE_RATE
+from src.config import (
+    MODEL_DIR, DEVICE, USE_FP16, SAMPLE_RATE, STRICTNESS, STRICTNESS_LEVELS,
+)
 from src.core.device import resolve_device
 from src.core.matching import match_for_mode
 from src.core.page_map import PageMap
 from src.core.quran import QuranIndex
 from src.ui.recitation import RecitationTracker
+from scripts.recitation_corpus import (
+    MANIFEST_PATH, RECITATIONS_DIR, UNAVAILABLE_PATH, case_from_entry,
+    load_pcm16, read_manifest,
+)
 
 RECORDS_DIR = PROJECT_ROOT / "tests" / "records"
 
@@ -62,6 +68,13 @@ class Expectation:
     # recited, so such a case is left out of the coverage total rather than
     # counted as words the app failed to show.
     partial: bool = False
+    # Which stratum of the fetched corpus this case came from, and whose
+    # voice it is. Empty for the hand-made recordings, which are one stratum
+    # and one voice by definition. One overall number hides a category
+    # failing completely — which is exactly how "surah ala 11" scored zero
+    # for months — so the report breaks the totals down by both.
+    stratum: str = ""
+    reciter: str = ""
 
     @property
     def mistake_count(self) -> int:
@@ -93,32 +106,28 @@ EXPECTATIONS = [
                 partial=True),
     Expectation("qadr 1-2", 97, (1, 2), (), ""),
     Expectation("qafirun with auzu basmala", 109, (1, 1), (), "isti'adha + basmala first"),
+    # The first case in this corpus recorded in real conditions rather than
+    # for publication: a room, a C-Media analog mic, and 70 words/min against
+    # the 48 of the studio murattal the app scores 2.2% against. It is the
+    # whole of a Mushaf page — 4:12 is 88 words of dense inheritance law,
+    # which is the hardest thing in the corpus by a wide margin.
+    #
+    # It is here because measuring it was impossible: the same page recited
+    # live scored 48% of verdicts wrong and the audio was gone, so nothing
+    # could be replayed, compared or fixed. Now it can.
+    #
+    # The label is the reciter's own — they recited the page and say it was
+    # correct — and has not been checked by a second listen. Tier D found two
+    # hand-typed labels wrong, so treat a false alarm here as a question
+    # before treating it as a defect.
+    Expectation("nisa 12-14 whole page", 4, (12, 14), (),
+                "real conditions: room mic, fast pace, densest page in the Quran"),
 ]
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Audio loading — these FLACs have unreliable headers, so decode packets
-# ═══════════════════════════════════════════════════════════════════════
-
-def load_pcm16(path: Path, target_sr: int = SAMPLE_RATE) -> bytes:
-    """Decode any audio file to mono 16 kHz Int16 PCM bytes."""
-    import av
-
-    with av.open(str(path)) as container:
-        stream = container.streams.audio[0]
-        resampler = av.audio.resampler.AudioResampler(
-            format="s16", layout="mono", rate=target_sr
-        )
-        parts = []
-        for frame in container.decode(stream):
-            for out in resampler.resample(frame):
-                parts.append(out.to_ndarray().reshape(-1))
-        for out in resampler.resample(None) or []:
-            parts.append(out.to_ndarray().reshape(-1))
-
-    if not parts:
-        return b""
-    return np.concatenate(parts).astype(np.int16).tobytes()
+# `load_pcm16` now lives in scripts/recitation_corpus.py: the fetcher decodes
+# the same way to concatenate runs, and two decoders that must agree are one
+# decoder waiting to drift.
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -213,19 +222,46 @@ class Result:
 # ═══════════════════════════════════════════════════════════════════════
 
 def run_recording(model, index, page_map, path: Path, exp: Expectation,
-                  verbose: bool = False) -> Result:
-    """Push one recording through the pipeline, simulating real-time drops."""
-    res = Result(name=path.name, expectation=exp)
-    res.expected_words = index.words_in_range(exp.surah, *exp.ayahs)
+                  verbose: bool = False, strictness: str | None = None) -> Result:
+    """One recording, one strictness level."""
+    return run_levels(model, index, page_map, path, exp, verbose,
+                      [strictness])[strictness]
+
+
+def run_levels(model, index, page_map, path: Path, exp: Expectation,
+               verbose: bool, levels: list) -> dict:
+    """Push one recording through the pipeline once, scored at every level.
+
+    The audio and the ASR are shared. Strictness changes only what colour a
+    verdict is painted — it cannot change which window arrives when, what the
+    model hears, or where the tracker thinks the reciter is — so running the
+    model once per level would burn four times the GPU for four identical
+    transcriptions. On the fetched corpus that is the difference between half
+    an hour and two hours, which is the difference between measuring every
+    level and not bothering.
+
+    Each level still gets its own tracker, its own board and its own match
+    decisions computed from its own pointer. Only `transcribe()` is shared.
+    If strictness ever did come to affect tracking, the levels would simply
+    diverge here rather than silently share a wrong answer.
+    """
+    results = {level: Result(name=path.name, expectation=exp) for level in levels}
+    expected_words = index.words_in_range(exp.surah, *exp.ayahs)
 
     pcm = load_pcm16(path)
-    res.audio_s = len(pcm) / 2 / SAMPLE_RATE
+    audio_s = len(pcm) / 2 / SAMPLE_RATE
 
-    board = ScoreBoard()
-    # The tracker's timing rules must see the simulated clock, not wall time,
-    # or the benchmark stops reproducing the live app.
-    virtual = VirtualClock()
-    tracker = RecitationTracker(board, page_map, index, clock=virtual)
+    runs = {}
+    for level in levels:
+        board = ScoreBoard()
+        # The tracker's timing rules must see the simulated clock, not wall
+        # time, or the benchmark stops reproducing the live app.
+        virtual = VirtualClock()
+        runs[level] = (board, virtual, RecitationTracker(
+            board, page_map, index, clock=virtual, strictness=level))
+        results[level].expected_words = expected_words
+        results[level].audio_s = audio_s
+
     buffer = SlidingWindowBuffer()
 
     # Feed the buffer in 100 ms increments like the mic callback does, and
@@ -239,14 +275,15 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
             pending.append((audio_t, window.data))
     leftover = buffer.flush()
     if leftover:
-        pending.append((res.audio_s, leftover.data))
+        pending.append((audio_s, leftover.data))
 
     # Virtual clock: the model is busy while it transcribes, and any window
     # that arrived during that time is stale — the live LIFO queue keeps only
     # the newest one. This reproduces the app's real drop rate.
     t0 = time.monotonic()
     clock = 0.0
-    virtual.now = 0.0
+    for _board, virtual, _tracker in runs.values():
+        virtual.now = 0.0
     i = 0
     while i < len(pending):
         arrive, window = pending[i]
@@ -255,68 +292,82 @@ def run_recording(model, index, page_map, path: Path, exp: Expectation,
         newest = i
         while newest + 1 < len(pending) and pending[newest + 1][0] <= clock:
             newest += 1
-        res.dropped += newest - i
+        dropped = newest - i
         arrive, window = pending[newest]
         i = newest + 1
 
         text, asr_ms = transcribe(model, window)
-        res.chunks += 1
-        res.asr_ms.append(asr_ms)
         clock += asr_ms / 1000.0
-        virtual.now = clock
 
-        if not text:
-            res.empty += 1
-            continue
-
-        res.transcripts.append(text)
-        context = (tracker.last_surah, tracker.last_ayah, tracker.last_word_index)
-        decision = match_for_mode(index, text, tracker.mode, context)
         from src.core.debug import log as _dbg
-        if _dbg.enabled:
-            _dbg.asr(text, asr_ms)
-            _dbg.match(decision.mode, context, decision.match, decision.skip_reason)
-        tracker.on_result({
-            "text": text,
-            "match": decision.match,
-            "mode": tracker.mode,
-            "attempted": decision.attempted,
-        })
-        if decision.match is not None:
-            res.found_position = True
+        logged = False
 
-    tracker.finalize()
-    res.wall_s = time.monotonic() - t0
+        for level, (_board, virtual, tracker) in runs.items():
+            res = results[level]
+            res.dropped += dropped
+            res.chunks += 1
+            res.asr_ms.append(asr_ms)
+            virtual.now = clock
 
-    # Score the final state of the page
+            if not text:
+                res.empty += 1
+                continue
+
+            res.transcripts.append(text)
+            context = (tracker.last_surah, tracker.last_ayah,
+                       tracker.last_word_index)
+            decision = match_for_mode(index, text, tracker.mode, context)
+            if _dbg.enabled and not logged:
+                logged = True
+                _dbg.asr(text, asr_ms)
+                _dbg.match(decision.mode, context, decision.match,
+                           decision.skip_reason)
+            tracker.on_result({
+                "text": text,
+                "match": decision.match,
+                "mode": tracker.mode,
+                "attempted": decision.attempted,
+            })
+            if decision.match is not None:
+                res.found_position = True
+
+    wall = time.monotonic() - t0
     lo, hi = exp.ayahs
-    for (surah, ayah, word_index), status in board.final.items():
-        in_range = surah == exp.surah and lo <= ayah <= hi
-        if not in_range:
-            res.off_range += 1
-            continue
-        if status is True:
-            res.ok += 1
-        elif status is False:
-            res.wrong += 1
-            res.flagged.add((surah, ayah, word_index))
-            entry = tracker._scored.get((surah, ayah, word_index))
-            if entry is not None:
-                w = entry[1]
-                res.wrong_words.append(
-                    f"{surah}:{ayah}:{word_index}  heard={w.recited!r} ref={w.reference!r}"
-                )
+    for level, (board, _virtual, tracker) in runs.items():
+        res = results[level]
+        tracker.finalize()
+        res.wall_s = wall / len(runs)
+
+        # Score the final state of the page
+        for (surah, ayah, word_index), status in board.final.items():
+            in_range = surah == exp.surah and lo <= ayah <= hi
+            if not in_range:
+                res.off_range += 1
+                continue
+            if status is True:
+                res.ok += 1
+            elif status is False:
+                res.wrong += 1
+                res.flagged.add((surah, ayah, word_index))
+                entry = tracker._scored.get((surah, ayah, word_index))
+                if entry is not None:
+                    w = entry[1]
+                    res.wrong_words.append(
+                        f"{surah}:{ayah}:{word_index}  heard={w.recited!r} "
+                        f"ref={w.reference!r}"
+                    )
+                else:
+                    res.wrong_words.append(f"{surah}:{ayah}:{word_index}")
             else:
-                res.wrong_words.append(f"{surah}:{ayah}:{word_index}")
-        else:
-            res.missed += 1
+                res.missed += 1
 
     if verbose:
-        print(f"\n    transcripts ({len(res.transcripts)}):")
-        for t in res.transcripts:
+        first = results[levels[0]]
+        print(f"\n    transcripts ({len(first.transcripts)}):")
+        for t in first.transcripts:
             print(f"      {t}")
 
-    return res
+    return results
 
 
 def transcribe(model, window: bytes) -> tuple[str, float]:
@@ -333,16 +384,120 @@ def transcribe(model, window: bytes) -> tuple[str, float]:
 # Reporting
 # ═══════════════════════════════════════════════════════════════════════
 
+@dataclass
+class Totals:
+    """The three numbers, over any slice of the results.
+
+    Always computed together. A lower false alarm rate that also misses real
+    mistakes is a regression, and a higher coverage bought by scoring fewer
+    words is not an improvement — so nothing here is reportable on its own.
+    """
+
+    label: str
+    cases: int = 0
+    found: int = 0
+    ok: int = 0
+    wrong: int = 0
+    missed: int = 0
+    false_alarms: int = 0
+    expected: int = 0
+    unshown: int = 0
+    mistakes: int = 0
+    caught: int = 0
+
+    @property
+    def scored(self) -> int:
+        return self.ok + self.wrong
+
+    @property
+    def coverage(self) -> float | None:
+        if not self.expected:
+            return None
+        return 100 * (self.expected - self.unshown) / self.expected
+
+    @property
+    def false_alarm_rate(self) -> float | None:
+        if not self.scored:
+            return None
+        return 100 * self.false_alarms / self.scored
+
+
+def totals_for(results: list[Result], label: str) -> Totals:
+    t = Totals(label=label, cases=len(results))
+    for r in results:
+        t.found += 1 if r.found_position else 0
+        t.ok += r.ok
+        t.wrong += r.wrong
+        t.missed += r.missed
+        t.false_alarms += r.false_alarms
+        t.unshown += r.unshown
+        t.mistakes += r.expectation.mistake_count
+        t.caught += r.caught
+        # A partial recording still contributes the words it did cover — it
+        # is only the words never recited that cannot be charged to the app.
+        t.expected += ((r.ok + r.wrong + r.missed) if r.expectation.partial
+                       else r.expected_words)
+    return t
+
+
+def group_by(results: list[Result], key) -> list[Totals]:
+    """Totals per distinct value of `key`, ordered by that value."""
+    buckets: dict[str, list[Result]] = {}
+    for r in results:
+        buckets.setdefault(key(r), []).append(r)
+    return [totals_for(rs, name) for name, rs in sorted(buckets.items())]
+
+
+def print_breakdown(title: str, rows: list[Totals], first_col: str, note: str = ""):
+    """One overall number hides a category failing completely.
+
+    That is exactly how "surah ala 11" scored zero for months: it was two
+    words in a corpus of nine hundred, so the total never moved.
+    """
+    if len(rows) < 2:
+        return
+    print()
+    print(f"  {title}")
+    if note:
+        print(f"  {note}")
+    print(f"  {first_col:<28} {'cases':>5} {'found':>6} {'scored':>7} "
+          f"{'cover':>7} {'false':>7}")
+    print("  " + "-" * 66)
+    for t in rows:
+        cov = f"{t.coverage:.1f}%" if t.coverage is not None else "-"
+        far = f"{t.false_alarm_rate:.1f}%" if t.false_alarm_rate is not None else "-"
+        flag = ""
+        if t.coverage is not None and t.coverage < 95:
+            flag = "  <-- COVERAGE"
+        if t.false_alarm_rate is not None and t.false_alarm_rate >= 5:
+            flag += "  <-- FALSE ALARMS"
+        print(f"  {t.label[:28]:<28} {t.cases:5} {t.found:6} {t.scored:7} "
+              f"{cov:>7} {far:>7}{flag}")
+    print("  " + "-" * 66)
+
+
 def report(results: list[Result], engine_label: str = ""):
     print()
     print("=" * 96)
     print("  RESULTS")
     print("=" * 96)
+
+    # With a fetched corpus this table is hundreds of rows and nobody reads
+    # it. Show every row for the hand-made corpus, where each recording is
+    # individually meaningful, and only the failing rows for a large one.
+    big = len(results) > 30
+    rows = [r for r in results
+            if r.false_alarms or r.unshown or not r.found_position
+            or r.caught < r.expectation.mistake_count] if big else results
+    if big:
+        print(f"  {len(results)} cases; showing the {len(rows)} with something "
+              f"to look at")
+
     print(f"  {'recording':<40} {'position':>9} {'ok':>5} {'caught':>7} "
           f"{'miss':>5} {'false':>6} {'unseen':>7} {'drop%':>6}")
     print("  " + "-" * 92)
 
-    for r in results:
+    for r in rows:
         pos = "FOUND" if r.found_position else "LOST"
         total_windows = r.chunks + r.dropped
         drop = 100 * r.dropped / total_windows if total_windows else 0
@@ -360,7 +515,7 @@ def report(results: list[Result], engine_label: str = ""):
     print("  " + "-" * 92)
 
     flagged = [r for r in results if r.wrong_words]
-    if flagged:
+    if flagged and not big:
         print()
         print("  WORDS MARKED WRONG:")
         for r in flagged:
@@ -370,14 +525,25 @@ def report(results: list[Result], engine_label: str = ""):
             for w in r.wrong_words:
                 print(f"       {w}")
 
-    total_ok = sum(r.ok for r in results)
-    total_wrong = sum(r.wrong for r in results)
-    total_missed = sum(r.missed for r in results)
-    total_false = sum(r.false_alarms for r in results)
-    total_scored = total_ok + total_wrong
-    found = sum(1 for r in results if r.found_position)
-    expected_mistakes = sum(r.expectation.mistake_count for r in results)
-    caught_mistakes = sum(r.caught for r in results)
+    # ── Per stratum, then per reciter ─────────────────────────────────
+    if any(r.expectation.stratum for r in results):
+        print_breakdown(
+            "PER STRATUM — read this before the total",
+            group_by(results, lambda r: r.expectation.stratum or "(hand-made)"),
+            "stratum",
+            "a stratum failing completely is invisible in one overall number",
+        )
+    if any(r.expectation.reciter for r in results):
+        print_breakdown(
+            "PER RECITER — the app was tuned on one voice",
+            group_by(results, lambda r: r.expectation.reciter or "(hand-made)"),
+            "reciter",
+            "if the others score much worse, the tuning is overfitted and "
+            "config.py needs re-deriving",
+        )
+
+    # ── The totals ────────────────────────────────────────────────────
+    t = totals_for(results, "all")
     all_asr = [ms for r in results for ms in r.asr_ms]
     windows = sum(r.chunks + r.dropped for r in results)
     dropped = sum(r.dropped for r in results)
@@ -387,32 +553,27 @@ def report(results: list[Result], engine_label: str = ""):
     print()
     if engine_label:
         print(f"  engine                  {engine_label}")
-    print(f"  position found          {found}/{len(results)} recordings")
-    print(f"  words scored            {total_scored}  (ok={total_ok} wrong={total_wrong} "
-          f"missed={total_missed})")
-    # A partial recording still contributes the words it did cover — it is
-    # only the words never recited that cannot be charged to the app. Dropping
-    # such a recording entirely would throw away real coverage (Al-Mutaffifin
-    # alone accounts for 69 scored words) and make the percentage jump about
-    # for reasons that have nothing to do with the app.
-    total_expected = sum(
-        (r.ok + r.wrong + r.missed) if r.expectation.partial
-        else r.expected_words
-        for r in results
-    )
-    total_unshown = sum(r.unshown for r in results)
-    if total_expected:
-        seen = total_expected - total_unshown
-        print(f"  COVERAGE                {seen}/{total_expected} = "
-              f"{100 * seen / total_expected:.1f}% of recited words given a verdict"
+    print(f"  position found          {t.found}/{t.cases} recordings")
+    print(f"  words scored            {t.scored}  (ok={t.ok} wrong={t.wrong} "
+          f"missed={t.missed})")
+    if t.coverage is not None:
+        print(f"  COVERAGE                {t.expected - t.unshown}/{t.expected} = "
+              f"{t.coverage:.1f}% of recited words given a verdict"
               f"   <-- read this first")
-    if total_scored:
-        print(f"  FALSE ALARM RATE        {total_false}/{total_scored} = "
-              f"{100 * total_false / total_scored:.1f}%   <-- the number to drive down")
+    if t.false_alarm_rate is not None:
+        print(f"  FALSE ALARM RATE        {t.false_alarms}/{t.scored} = "
+              f"{t.false_alarm_rate:.1f}%   <-- the number to drive down")
         print( "                          (a fraction of words SCORED — showing "
                "fewer words flatters it, so coverage must hold)")
-    print(f"  DELIBERATE MISTAKES     {caught_mistakes}/{expected_mistakes} caught"
-          f"   <-- must stay at {expected_mistakes}/{expected_mistakes}")
+    if t.mistakes:
+        print(f"  DELIBERATE MISTAKES     {t.caught}/{t.mistakes} caught"
+              f"   <-- must stay at {t.mistakes}/{t.mistakes}")
+    else:
+        print( "  DELIBERATE MISTAKES     none in this corpus — a correct "
+               "recitation contains no mistakes,")
+        print( "                          so this run cannot tell you whether "
+               "the app still catches them.")
+        print( "                          Run the hand-made corpus too.")
     if all_asr:
         print(f"  asr latency             mean={np.mean(all_asr):.0f}ms "
               f"median={np.median(all_asr):.0f}ms")
@@ -470,10 +631,92 @@ def cases_from_session(directory: Path) -> list[tuple[Path, Expectation]]:
     return cases
 
 
+def selected(needle: str, path: Path, exp: Expectation) -> bool:
+    """Whether `--only` picks this case.
+
+    The name alone is not enough for the fetched corpus: its filenames are
+    `002_001.mp3` and the thing you want to re-run is "every muqatta'at case"
+    or "everything As-Sudais recited" — which is what the per-stratum and
+    per-reciter breakdowns send you looking for.
+    """
+    return (needle in path.name
+            or needle in str(path.parent.name)
+            or needle in exp.stratum
+            or needle in exp.reciter)
+
+
+def cases_from_recitations(manifest_path: Path,
+                           root: Path) -> list[tuple[Path, Expectation]]:
+    """Read the fetched corpus manifest as benchmark cases.
+
+    **The expectations are generated, not typed.** The surah and ayah come
+    from the ayah number in the URL the audio was fetched from, so the Tier D
+    class of error — two of eleven hand-made labels naming ayahs the audio
+    does not contain — cannot recur. Nobody types a label here.
+
+    `mistakes` is empty for every case and stays empty: these are correct
+    recitations by established qāriʾ, so the corpus can move coverage and
+    false alarms and nothing else. DELIBERATE MISTAKES still comes only from
+    the hand-made recordings.
+    """
+    manifest = read_manifest(manifest_path)
+    cases: list[tuple[Path, Expectation]] = []
+    missing = 0
+
+    for entry in manifest.get("cases", ()):
+        case = case_from_entry(entry)
+        path = root / entry["file"]
+        if not path.exists():
+            missing += 1
+            continue
+        cases.append((path, Expectation(
+            pattern=entry["file"],
+            surah=case.surah,
+            ayahs=(case.first_ayah, case.last_ayah),
+            mistakes=(),
+            note=case.note,
+            stratum=case.stratum,
+            reciter=case.reciter,
+        )))
+
+    if missing:
+        # Two different things, and conflating them would be the same error
+        # the coverage metric exists to prevent: a case nobody can fetch is a
+        # hole in the corpus, while a case nobody *has* fetched is a command
+        # you have not run.
+        unavailable = {}
+        record = root / UNAVAILABLE_PATH.name
+        if record.exists():
+            try:
+                unavailable = json.loads(record.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                unavailable = {}
+        if unavailable:
+            print(f"  {len(unavailable)} case(s) the source cannot supply "
+                  f"(see {record.name}) — a hole in the corpus, not a "
+                  f"missing download")
+        not_fetched = missing - len(unavailable)
+        if not_fetched > 0:
+            print(f"  {not_fetched} case(s) not fetched yet — "
+                  f"python scripts/fetch_recitations.py --agree")
+    return cases
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", help="substring filter on the recording name")
+    ap.add_argument("--only",
+                    help="substring filter on the recording name — or, for "
+                         "--from-recitations, on the stratum or the reciter, "
+                         "which is how you go and look at a stratum the "
+                         "report says is failing")
     ap.add_argument("--verbose", action="store_true", help="print every transcript")
+    ap.add_argument(
+        "--strictness", default=None, metavar="LEVEL",
+        help="how much evidence before a word is painted red: "
+             + ", ".join(STRICTNESS_LEVELS) + ", or 'all' to run every level "
+             "and print them side by side. A level ships with measured "
+             "numbers or it does not ship.",
+    )
     ap.add_argument("--debug-log", help="write a full session log to this path")
     ap.add_argument("--model", default=MODEL_DIR, help="model directory to benchmark")
     ap.add_argument(
@@ -486,13 +729,29 @@ def main():
         "--from-session", type=Path, metavar="DIR",
         help="score a ./run.sh --record directory instead of tests/records/",
     )
+    ap.add_argument(
+        "--from-recitations", action="store_true",
+        help="score the fetched corpus of published recitations instead of "
+             "tests/records/. Expectations come from the manifest, which "
+             "took them from the ayah number in the URL — so they are "
+             "generated, not typed.",
+    )
+    ap.add_argument(
+        "--manifest", type=Path, default=MANIFEST_PATH,
+        help="corpus manifest for --from-recitations",
+    )
+    ap.add_argument(
+        "--recitations-dir", type=Path, default=RECITATIONS_DIR,
+        help="where the fetched audio lives",
+    )
     args = ap.parse_args()
 
     if args.debug_log:
         from src.core.debug import log as debug_log
         debug_log.enable(args.debug_log)
 
-    if args.from_session is None and not RECORDS_DIR.exists():
+    if (args.from_session is None and not args.from_recitations
+            and not RECORDS_DIR.exists()):
         print(f"No recordings at {RECORDS_DIR}")
         return 1
 
@@ -514,7 +773,15 @@ def main():
         return 1
     print(f"Engine: {model.label} — {model.description}")
 
-    if args.from_session is not None:
+    if args.from_recitations:
+        cases = cases_from_recitations(args.manifest, args.recitations_dir)
+        if not cases:
+            print(f"\n  No fetched audio under {args.recitations_dir}.\n"
+                  f"    python scripts/fetch_recitations.py --plan\n"
+                  f"    python scripts/fetch_recitations.py --agree\n")
+            return 1
+        print(f"  {len(cases)} case(s) from the fetched corpus\n")
+    elif args.from_session is not None:
         cases = cases_from_session(args.from_session)
         if not cases:
             print(f"  no labelled clips in {args.from_session}")
@@ -530,20 +797,112 @@ def main():
                 continue
             cases.append((matches[0], exp))
 
-    results = []
+    levels = (list(STRICTNESS_LEVELS) if args.strictness == "all"
+              else [args.strictness or STRICTNESS])
+    for level in levels:
+        if level not in STRICTNESS_LEVELS:
+            print(f"  unknown strictness {level!r}; choose from "
+                  f"{', '.join(STRICTNESS_LEVELS)} or 'all'")
+            return 1
+
+    by_level = run_all_levels(model, index, page_map, cases, args, levels)
+
+    if len(levels) > 1:
+        # The per-stratum view is the most useful thing this report produces
+        # and comparing levels must not cost it. Shown for the configured
+        # default, since that is the one the app actually runs.
+        shown = STRICTNESS if STRICTNESS in by_level else levels[0]
+        breakdown_only(by_level[shown], shown)
+        compare_levels(by_level, model.label)
+    else:
+        results = by_level[levels[0]]
+        if results:
+            report(results, f"{model.label} @ {levels[0]}")
+    return 0
+
+
+def run_all_levels(model, index, page_map, cases, args, levels) -> dict:
+    by_level: dict[str, list[Result]] = {level: [] for level in levels}
+    unreadable: list[tuple[str, str]] = []
     for path, exp in cases:
-        if args.only and args.only not in path.name:
+        if args.only and not selected(args.only, path, exp):
             continue
 
         label = f"{exp.surah}:{exp.ayahs[0]}"
         if exp.ayahs[0] != exp.ayahs[1]:
             label += f"-{exp.ayahs[1]}"
         print(f"  {path.name[:60]:<62} expect {label}", flush=True)
-        results.append(run_recording(model, index, page_map, path, exp, args.verbose))
+        try:
+            scored = run_levels(model, index, page_map, path, exp,
+                                args.verbose, levels)
+            for level, result in scored.items():
+                by_level[level].append(result)
+        except Exception as e:
+            # A 275-case run takes half an hour and one bad file used to end
+            # it at case 60 with an av error naming no file. Unreadable audio
+            # is reported by name and the run carries on — but it is reported,
+            # never silently dropped, because a case quietly removed from the
+            # denominator is exactly how a corpus flatters an app.
+            unreadable.append((path.name, f"{type(e).__name__}: {e}"))
+            print(f"    UNREADABLE — {type(e).__name__}: {e}", flush=True)
 
-    if results:
-        report(results, model.label)
-    return 0
+    if unreadable:
+        print(f"\n  {len(unreadable)} file(s) could not be read and were not "
+              f"scored:")
+        for name, why in unreadable:
+            print(f"    {name}: {why}")
+        print( "  Delete them and re-fetch — the fetcher now refuses to keep "
+               "a file that does not decode.")
+    return by_level
+
+
+def breakdown_only(results: list[Result], level: str):
+    """The per-stratum and per-reciter tables, without the per-case list."""
+    if any(r.expectation.stratum for r in results):
+        print_breakdown(
+            f"PER STRATUM at '{level}' — read this before the total",
+            group_by(results, lambda r: r.expectation.stratum or "(hand-made)"),
+            "stratum",
+            "a stratum failing completely is invisible in one overall number",
+        )
+    if any(r.expectation.reciter for r in results):
+        print_breakdown(
+            f"PER RECITER at '{level}' — the app was tuned on one voice",
+            group_by(results, lambda r: r.expectation.reciter or "(hand-made)"),
+            "reciter",
+            "if the others score much worse, the tuning is overfitted",
+        )
+
+
+def compare_levels(by_level: dict[str, list[Result]], engine_label: str):
+    """Every level, side by side. The point of the exercise.
+
+    A level is named by what it costs, not by how it sounds — "lenient" that
+    nobody has measured is a knob connected to nothing, and this codebase has
+    already shipped one of those.
+    """
+    print()
+    print("=" * 96)
+    print(f"  STRICTNESS LEVELS — {engine_label}")
+    print("=" * 96)
+    print(f"  {'level':<12} {'scored':>7} {'coverage':>9} {'false alarms':>13} "
+          f"{'caught':>8}   read every row together")
+    print("  " + "-" * 92)
+    for level, results in by_level.items():
+        t = totals_for(results, level)
+        cov = f"{t.coverage:.1f}%" if t.coverage is not None else "-"
+        far = (f"{t.false_alarms}/{t.scored} = {t.false_alarm_rate:.1f}%"
+               if t.false_alarm_rate is not None else "-")
+        caught = f"{t.caught}/{t.mistakes}" if t.mistakes else "-"
+        flag = ""
+        if t.mistakes and t.caught < t.mistakes:
+            flag = "  <-- MISSES A REAL MISTAKE"
+        print(f"  {level:<12} {t.scored:7} {cov:>9} {far:>13} {caught:>8}{flag}")
+    print("  " + "-" * 92)
+    print( "  A lower false alarm rate that also catches fewer mistakes is a")
+    print( "  regression, not an improvement. Neither column means anything")
+    print( "  without the other, and neither means anything without coverage.")
+    print("=" * 96)
 
 
 if __name__ == "__main__":

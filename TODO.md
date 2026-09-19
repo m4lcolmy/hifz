@@ -328,80 +328,160 @@ a measurement of the corpus.
 
 ---
 
-# Tier H — Give the page back, and expose the two choices
+# Tier H — One page, one bar
 
 *Planned, not started.*
 
 ### Why
 
-**The pill covers the Mushaf.** It is a child of `central` positioned
-absolutely — `main_window.py`, `resizeEvent()` — 240×48 at bottom centre, 40px
-up. The Mushaf takes the left 600px of a 1000px window, so the pill's left
-half sits on top of the page and hides the bottom of it. Nothing reserves that
-space; the page is laid out as if the pill were not there.
+**Three things are wrong with the window, and they are the same thing.**
 
-This is the interface. A Mushaf you cannot read the bottom of is worse than
-one with a plain toolbar, and the floating pill was chosen for the opposite
-reason.
+The pill covers the Mushaf. It is a child of `central` positioned absolutely
+— `main_window.py`, `resizeEvent()` — 240×48 at bottom centre, 40px up.
+Nothing reserves that space, so the page is laid out as if the pill were not
+there and the bottom of it is hidden underneath.
 
-**And two things are now settings that no one can reach.** Tier F made the
-engine selectable and Tier 3 made recording a flag, but both are decided
-before launch:
+The right 400px of a 1000px window is a `QTextEdit` printing the same
+verdicts the page is already showing in colour. Two renderings of one thing,
+and the duplicate gets 40% of the window while the Mushaf is squeezed into
+600px.
 
-```bash
-./run.sh --engine ctc --record
+And **three decisions are made before launch that belong inside a session** —
+the engine (Tier F), recording (Tier 3), and now strictness (below). A
+bake-off you can only start from a terminal gets run once; one you can flip
+mid-session gets run daily.
+
+All three are the same mistake: chrome taking space and decisions from the
+page. The page is the interface.
+
+### The shape
+
+Square. Two regions, and nothing else:
+
+```
+┌──────────────────────────────────────────┐
+│                                          │
+│              the Mushaf page             │
+│          (everything above the bar)      │
+│                                          │
+├──────────────────────────────────────────┤
+│  ⚙            ▶ play            state    │
+└──────────────────────────────────────────┘
 ```
 
-A bake-off you can only start from a terminal gets run once. One you can flip
-mid-session gets run daily — and `ModelLoaderThread` already takes an engine
-name, so switching is a supported operation rather than a restart.
+- **The page fills everything above the bar.** No splitter, no right panel.
+- **One bar along the bottom.** Play dead centre, settings at one end, live
+  state at the other.
+
+**A bar, not a pill with reserved space.** The earlier plan was to give the
+Mushaf a bottom margin the height of the floating pill. A bar *is* that
+space: there is no geometry to keep in sync, no `resizeEvent` arithmetic, and
+nothing that can drift back over the page at an unusual window size. The
+floating look was chosen to keep the page uninterrupted; a bar keeps it
+uninterrupted by construction.
 
 ### Work — in this order
 
-1. **Stop the pill covering the page.** Reserve its footprint: give the
-   Mushaf view a bottom margin of the pill's height plus its gap, so the page
-   lays out above it and the pill floats over nothing. Keep the floating look
-   — it is right — but make the space real instead of borrowed.
-   *Check at small window sizes and after dragging the splitter, which is
-   where absolute positioning usually breaks.*
-2. **Engine picker in the pill.** One control showing the current engine's
-   label; tapping it lists `engine_choices()`, which already carries a
-   one-line description per engine. Selecting one starts a new
-   `ModelLoaderThread(engine_name=…)` and the pill shows *loading* until
-   ready. An engine whose model is missing is listed but disabled, with
-   `EngineUnavailable`'s message as the tooltip — that message already says
-   what to do about it.
-3. **Record toggle**, replacing `--record`. It is a per-session decision, and
-   having to decide it before launch is why most sessions are not captured.
-4. **A legend, once.** Three colours now mean three different things —
-   correct, wrong, and *not sure* (the amber from Tier E's untrusted-region
-   rule) — plus the basmala line, which is shown but never scored. Nothing
-   tells the reciter any of that.
-5. **Live state, not chrome.** Whether the app is *searching* or *following*
-   is the one thing the reciter cannot otherwise know, and it explains the
-   blank page during discovery. One line, only while it matters.
+1. **Delete the right panel and the splitter.** `output_text`, `QSplitter`,
+   `QTextEdit#output` in `style.py`, and the `setHtml` calls at
+   `main_window.py:273` and `:338`. `RecitationTracker.on_result()` returns
+   HTML that nothing will consume any more — that return value goes too, and
+   the page becomes the only channel. *The transcriptions are not lost: they
+   are in the session log, which is on by default and is where anyone
+   actually reads them.*
+
+2. **Replace the floating pill with the bottom bar.** A real widget in the
+   `QVBoxLayout` under the Mushaf, not an absolutely positioned child. The
+   drop shadow and the pill's proportions are right and should survive the
+   move; what should not survive is `resizeEvent()` positioning it by hand.
+   *Check at the minimum window size — 800×480 — where a fixed-width pill
+   was already close to the edges.*
+
+3. **A settings menu on the bar.** One button, one popup. It holds the
+   engine picker (`engine_choices()` already carries a line of description
+   per engine; an engine whose model is missing is listed but disabled, with
+   `EngineUnavailable`'s message as the tooltip, because that message already
+   says what to do about it), the record toggle, and the strictness level.
+   Selecting an engine starts a new `ModelLoaderThread(engine_name=…)` and
+   the bar says *loading* until it is ready — switching is already a
+   supported operation.
+
+4. **Strictness levels.** The substantive one — see below.
+
+5. **A legend, once.** Four things are shown and nothing explains any of
+   them: correct, wrong, *not sure* (Tier E's amber untrusted-region rule),
+   and the basmala line, which is displayed but never scored.
+
+6. **Live state, not chrome.** Whether the app is *searching* or *following*
+   is the one thing the reciter cannot otherwise know, and it is what
+   explains the blank page during discovery. One word at the end of the bar,
+   only while it matters.
+
+### Strictness — the reciter's decision, not the model's
+
+Measured across all 19 session logs: 4,792 `WRONG` verdicts, **2,652
+distinct** heard/reference pairs, of which **347 (13%) are one letter apart**
+and the rest are whole words misheard. The largest single-letter class is
+`و↔ف` at 21 distinct pairs — which is the class the deliberate mistake
+فَلَهُمْ/وَلَهُمْ belongs to.
+
+So **forgiving a letter class is not available as a setting.** On the
+hand-made corpus it costs more than it buys:
+
+| | what it is | if single-letter differences are forgiven |
+|---|---|---|
+| `2:7:9` فَلَهُمْ / وَلَهُمْ | real mistake | 1 letter → **no longer caught** |
+| `49:13:6` أَوْ / وَأُنثَىٰ | real mistake | still caught |
+| `2:7:11` أَلِيمٌ / عَظِيمٌ | false alarm | 2 letters → **still a false alarm** |
+
+Removes 0 of 1 false alarms, loses 1 of 2 caught mistakes. This is Tier E's
+result again: the mistake and the false alarm are the same edit at the same
+distance, so no comparison of strings can separate them.
+
+What *is* available is letting the reciter say which error they would rather
+have. Ḥifẓ review wants everything flagged; fluency practice wants to be
+stopped only for a real error. The app cannot know which; the person can.
+
+Candidate levels — **each one ships with its measured numbers or it does not
+ship**, because a level named "lenient" that nobody has benchmarked is a knob
+connected to nothing, and this codebase already shipped one of those
+(`CTC_MIN_CONFIDENCE`, inert, found in Tier F):
+
+| level | rule | status |
+|---|---|---|
+| **strict** | today's behaviour: any letter difference is wrong | the baseline — 0.6% false alarms, 2/2 caught |
+| **confirmed** | a word is painted red only once N independent windows agree | **hypothesis.** Trades latency for confidence and forgives no letter class, so the mistakes should survive. Generalizes `EDGE_CONFIRMATIONS`, which already does this at window edges |
+| **words** | only a whole-word difference is wrong | **known cost: loses فَلَهُمْ/وَلَهُمْ.** Include it if it is measured, label it honestly |
+| **follow** | colour nothing, just keep the page | for reading along. The honest version of "stop grading letters" |
+
+`config.py` gets the thresholds; the bar gets the choice. The benchmark gets
+`--strictness all` and reports every level in one table, because the only way
+to name a level is to know what it costs.
 
 ### What stays out
 
 No preferences window. If a control does not need to be touched during a
-session it belongs in `config.py`. The page is the interface; every pixel
-spent on chrome is a pixel of Mushaf.
+session it belongs in `config.py`. Every pixel spent on chrome is a pixel of
+Mushaf.
 
 ### Gate
 
-Judged by use, not by numbers — but one number must not move.
+Judged by use, not by numbers — except that one number must not move, and one
+new table must exist.
 
 | Measure | Target |
 |---|---|
-| Mushaf text hidden behind the pill | **none**, at any window size |
+| Mushaf text hidden behind chrome | **none**, at any window size |
+| Window width given to the Mushaf | 600/1000 → **all of it** |
 | Switch engine without restarting | **works, mid-session** |
 | Sessions recorded | goes up, because the toggle is in reach |
-| Benchmark coverage / false alarms / caught | **unchanged** |
+| Every strictness level | **has measured coverage / false alarms / caught** |
+| Benchmark at `strict` | **unchanged** — 99.4% / 0.6% / 2-of-2 |
 
-A UI change that moves a scoring number means something is wired wrong.
+A UI change that moves a scoring number means something is wired wrong. A
+strictness level with no number beside it means the level is a guess.
 
 ---
-
 # Recordings still wanted
 
 **Tier G will fetch the bulk of a corpus** — published recitations by
@@ -426,13 +506,38 @@ nothing.
 - Stop mid-word and restart
 - Jump to a similar ayah elsewhere (one `كَلَّا` ayah to another)
 
-### Real conditions
+### Real conditions — now the top of this list, and measured
 
-A fetched recitation is studio-clean and so are all 11 hand-made ones:
+**The corpus measures a condition the reciter never experiences.** Same code,
+same day, same machine:
+
+| audio | wrong verdicts |
+|---|---|
+| fetched corpus, 273 cases, 5 qāriʾ | **2.2%** false alarms |
+| studio 4:11, Alafasy, 71 dense words | **6.6%** (4 of 61) |
+| this reciter, 17:23 / 18:19 / 15:2 | **25–33%** |
+| this reciter, 4:12 | **48%** (60 of 88 words wrong at least once) |
+
+A ten-fold gap between the corpus and the person the app is for. Tier G was
+right that eleven easy recordings measured the corpus rather than the app —
+and 275 studio recordings measure the corpus too, just a bigger one. Nothing
+in the fetched corpus has a microphone in it.
+
+Two measurable differences, neither yet tested:
+
+- **pace.** 70 words/min against Alafasy's 48 — 46% faster, so fewer
+  acoustic frames per word inside the same 3-second window.
+- **the microphone and the room.** Every recording in both corpora was made
+  to be published.
+
+What is wanted, and why it is now urgent rather than nice to have:
 
 - long pauses (5–10s) mid-ayah, then resuming
 - coughing, throat-clearing, background noise
 - a phone on a table across the room
+- **the same ayah recited twice, once close to the mic and once across the
+  room** — the cheapest way to separate "the ayah is hard" from "the audio
+  is hard", which is currently unanswerable
 
 ### Already captured, worth promoting
 

@@ -26,6 +26,7 @@ import time
 
 from src.config import (
     TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
+    STRICTNESS, STRICTNESS_LEVELS,
     REDISCOVERY_MAX_GAP, PRELOCK_BUFFER_SECONDS, PRELOCK_MAX_CHUNKS,
 )
 from src.core.arabic import normalize, split_words
@@ -84,6 +85,31 @@ def _is_fragment(word) -> bool:
     return whole.startswith(heard) or whole.endswith(heard)
 
 
+def letter_distance(word) -> int:
+    """How many letters apart the reciter's word is from the reference.
+
+    Levenshtein on the normalized skeleton, so short vowels do not count —
+    Tier 3.6 stopped grading those and this must not quietly bring them back.
+    It is what the `words` strictness level thresholds on, and the reason that
+    level is labelled by its cost rather than called "lenient":
+    فَلَهُمْ/وَلَهُمْ is distance 1, and so is the false alarm it is meant to
+    suppress.
+    """
+    if not word.recited or not word.reference:
+        return 0
+    a, b = normalize(word.recited), normalize(word.reference)
+    if a == b:
+        return 0
+    previous = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        current = [i]
+        for j, y in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1,
+                               previous[j - 1] + (x != y)))
+        previous = current
+    return previous[-1]
+
+
 class _FragmentWord:
     """The whole word, credited from a piece of it heard at a window edge.
 
@@ -134,7 +160,8 @@ class RecitationTracker:
     """
 
     def __init__(self, mushaf_view: MushafView, page_map: PageMap,
-                 quran_index=None, clock=time.monotonic):
+                 quran_index=None, clock=time.monotonic,
+                 strictness: str | None = None):
         self._mushaf = mushaf_view
         self._page_map = page_map
         # Only needed to fill in an ayah recited while the tracker was lost.
@@ -176,6 +203,43 @@ class RecitationTracker:
         # What the Mushaf currently shows, so a repaint only pushes changes.
         self._painted: dict[tuple[int, int, int], object] = {}
 
+        # How much evidence is needed before a word is painted red. The
+        # reciter's decision, not the model's — see STRICTNESS in config.py.
+        self._strictness = ""
+        self._rules: dict = {}
+        self.set_strictness(strictness or STRICTNESS)
+        # How many separate audio windows have heard each word wrong, and
+        # which observation last counted, so one match cannot count twice.
+        self._wrong_count: dict[tuple[int, int, int], int] = {}
+        self._wrong_last: dict[tuple[int, int, int], int] = {}
+        # Words committed on stop, exempt from the confirmation requirement.
+        # See finalize().
+        self._no_more_windows: set[tuple[int, int, int]] = set()
+
+    # ── Strictness ─────────────────────────────────────────────────────
+
+    @property
+    def strictness(self) -> str:
+        return self._strictness
+
+    def set_strictness(self, level: str):
+        """Change the level, mid-session if you like.
+
+        A repaint follows, so the page immediately reflects the new rule
+        rather than only applying it to words not yet recited — the point of
+        putting this in reach is to be able to try it on what is on screen.
+        """
+        if level not in STRICTNESS_LEVELS:
+            raise ValueError(
+                f"unknown strictness {level!r}; "
+                f"choose from {', '.join(STRICTNESS_LEVELS)}"
+            )
+        self._strictness = level
+        self._rules = STRICTNESS_LEVELS[level]
+        log.event("STRICTNESS", level)
+        if self._painted:
+            self._repaint()
+
     @property
     def mode(self) -> str:
         return self._mode
@@ -185,6 +249,9 @@ class RecitationTracker:
         self.last_ayah = None
         self.last_word_index = -1
         self._scored.clear()
+        self._wrong_count.clear()
+        self._wrong_last.clear()
+        self._no_more_windows.clear()
         self._withheld.clear()
         self._observations = 0
         self._order.clear()
@@ -424,6 +491,16 @@ class RecitationTracker:
             word_id = (w.surah_id, w.ayah_id, w.reference_index)
             at_edge = word_id in edge_ids
 
+            # Count how many separate windows have heard this word wrong.
+            # Counted before the edge branch and before the quality contest,
+            # because what the `confirmed` level asks is "how much evidence
+            # is there", not "which single observation won". A fragment is a
+            # piece of the right word, not a wrong one, so it never counts.
+            if _rank(w) == 2 and not _is_fragment(w):
+                if self._wrong_last.get(word_id) != self._observations:
+                    self._wrong_last[word_id] = self._observations
+                    self._wrong_count[word_id] = self._wrong_count.get(word_id, 0) + 1
+
             # The pointer records where the reciter IS, not what has been
             # scored. It used to be updated at the bottom of this loop, after
             # several `continue`s — so re-hearing a word already scored left
@@ -480,6 +557,14 @@ class RecitationTracker:
 
             self._commit(w, quality, previous)
 
+        # A repaint even when nothing was committed. Under `confirmed` the
+        # second window to hear a word wrong changes its colour without
+        # changing the winning evidence — the quality contest rejects it as
+        # "equal or better already held" and returns early, so no _commit
+        # fires and the page would keep showing amber for a word that is now
+        # confirmed wrong. The same reason _repaint() exists for neighbours.
+        self._repaint()
+
     def _commit(self, w, quality, previous=None):
         """Record a verdict and paint it on the page."""
         word_id = (w.surah_id, w.ayah_id, w.reference_index)
@@ -529,7 +614,34 @@ class RecitationTracker:
         status = self._status(entry[1])
         if status is not False:
             return status
-        # Wrong, but only sayable as wrong in a region we trust. Otherwise it
+
+        # Wrong — but how much has to be true before the page says so is the
+        # reciter's choice. Everything below declines to condemn by returning
+        # amber, never by returning green: "I could not read this" is honest,
+        # "you said it correctly" would not be.
+        rules = self._rules
+        if not rules["paint_wrong"]:
+            return None
+
+        # Both gates below are written so that a threshold of 1 means *no
+        # gate at all*, not "a gate that happens to pass". `strict` sets both
+        # to 1 and must therefore be bit-identical to the behaviour this
+        # codebase had before strictness existed — otherwise the benchmark
+        # baseline moves and every number ever recorded becomes incomparable.
+        if rules["min_letter_diff"] > 1:
+            # Distance is measured on the normalized skeleton, so a
+            # diacritics-only error is distance 0. That is deliberate: a
+            # level called "words only" forgives it along with single-letter
+            # errors. It must never reach `strict`, which would switch off
+            # diacritic grading entirely without anyone asking.
+            if letter_distance(entry[1]) < rules["min_letter_diff"]:
+                return None
+        if rules["confirmations"] > 1:
+            if (word_id not in self._no_more_windows
+                    and self._wrong_count.get(word_id, 0) < rules["confirmations"]):
+                return None
+
+        # Wrong, and only sayable as wrong in a region we trust. Otherwise it
         # is amber: something happened here that we could not read.
         return False if self._neighbours_clear(word_id) else None
 
@@ -558,6 +670,14 @@ class RecitationTracker:
         """
         for word_id, (_seen, w, observed_at) in list(self._withheld.items()):
             if observed_at == self._observations and word_id not in self._scored:
+                # Exempt from the strictness confirmation count. That rule
+                # says "wait for another window to agree"; here the reciter
+                # has stopped and another window is never coming, so waiting
+                # is waiting forever. Without this, a mistake in the final
+                # word of a recitation is silently dropped at every level
+                # above `strict` — and the final word is exactly where the
+                # evidence is thinnest by construction.
+                self._no_more_windows.add(word_id)
                 self._commit(w, _quality(w, at_edge=True))
                 log.count("edge_word_committed_on_stop")
         self._withheld.clear()

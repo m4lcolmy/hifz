@@ -2,7 +2,7 @@ import unittest
 
 from src.config import (
     TRACKING_MAX_MISSES, TRACKING_MAX_MISS_SECONDS, EDGE_CONFIRMATIONS,
-    PRELOCK_BUFFER_SECONDS,
+    PRELOCK_BUFFER_SECONDS, STRICTNESS, STRICTNESS_LEVELS,
 )
 from src.core.quran import QuranIndex, VerseMatch, WordResult, BASMALA_TEXT
 from src.core.page_map import PageMap
@@ -146,7 +146,7 @@ class RecitationTrackerTests(unittest.TestCase):
     def test_skipped_words_are_highlighted_as_missed(self):
         """Gap-filled words go on the page amber (None), not red (False)."""
         mushaf = DummyMushafView()
-        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker = RecitationTracker(mushaf, self.page_map, strictness="strict")
         tracker.set_position(1, 2, 0)
 
         text = "اياك نعبد واياك نستعين"
@@ -188,7 +188,7 @@ class EvidenceScoringTests(unittest.TestCase):
     def test_fragment_verdict_is_upgraded_by_a_later_full_look(self):
         """The window cuts 'الصَّلَاةَ' into 'الصَّ'; a later window sees it whole."""
         mushaf = DummyMushafView()
-        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker = RecitationTracker(mushaf, self.page_map, strictness="strict")
         tracker.set_position(8, 3, 0)
 
         # First window: the word is in the middle, heard as a fragment
@@ -278,7 +278,7 @@ class EvidenceScoringTests(unittest.TestCase):
         hide a real mistake in it.
         """
         mushaf = DummyMushafView()
-        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker = RecitationTracker(mushaf, self.page_map, strictness="strict")
         tracker.set_position(8, 3, 0)
 
         # Clipped at the edge, then heard whole and wrong in the middle.
@@ -671,7 +671,7 @@ class UntrustedRegionTests(unittest.TestCase):
         would be silently dropped. The benchmark's Al-Hujurat mistake is
         exactly that case, and requiring *both* neighbours lost it."""
         mushaf = DummyMushafView()
-        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker = RecitationTracker(mushaf, self.page_map, strictness="strict")
         tracker.set_position(8, 3, 0)
 
         self._feed(tracker, [
@@ -685,7 +685,7 @@ class UntrustedRegionTests(unittest.TestCase):
     def test_confirming_a_neighbour_later_licenses_the_verdict(self):
         """A word's colour can change without new evidence about that word."""
         mushaf = DummyMushafView()
-        tracker = RecitationTracker(mushaf, self.page_map)
+        tracker = RecitationTracker(mushaf, self.page_map, strictness="strict")
         tracker.set_position(8, 3, 0)
 
         self._feed(tracker, [
@@ -774,6 +774,206 @@ class AyahBoundaryTests(unittest.TestCase):
         match = self.index.discover("رَحْمَنِ الرَّحِيمِ الْحَمْدُ")
         self.assertIsNotNone(match)
         self.assertEqual(match.surah_id, 1)
+
+
+class StrictnessTests(unittest.TestCase):
+    """How much evidence before a word is painted red.
+
+    Measured across 19 session logs: of 2,652 distinct heard/reference pairs
+    only 13% are a single letter apart, and the largest single-letter class
+    is و↔ف — which is the class the deliberate mistake فَلَهُمْ/وَلَهُمْ
+    belongs to. So no level here may forgive a letter class and still claim
+    to catch mistakes. What a level may do is ask for more evidence.
+
+    Nothing below returns green for a word the app is unsure about. Declining
+    to condemn gives amber — "something happened here I could not read" is
+    honest, "you said it correctly" would be a lie.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page_map = PageMap()
+
+    def _word(self, idx, recited, reference, correct):
+        return WordResult(recited=recited, reference=reference,
+                          is_correct=correct, surah_id=8, ayah_id=3,
+                          reference_index=idx)
+
+    def _feed(self, tracker, words):
+        tracker.on_result({"text": "x", "mode": "tracking", "attempted": True,
+            "match": VerseMatch(surah_id=8, surah_name="Al-Anfal", ayah_id=3,
+                                start_offset=0, words=words)})
+
+    def _tracker(self, level):
+        mushaf = DummyMushafView()
+        tracker = RecitationTracker(mushaf, self.page_map, strictness=level)
+        tracker.set_position(8, 3, 0)
+        return mushaf, tracker
+
+    def _mistake(self):
+        """One window, confident neighbours, and a one-letter mistake.
+
+        فَمِمَّا for وَمِمَّا — the same و/ف substitution as the benchmark's
+        deliberate mistake, so what happens to it here is what happens to
+        that.
+
+        Three words, with the mistake in the middle: the first and last word
+        of a match sit at the window boundary, where EDGE_CONFIRMATIONS
+        withholds a wrong verdict whatever the strictness level. Putting the
+        mistake at an edge would test that rule instead of this one.
+        """
+        return [
+            self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+            self._word(3, "فَمِمَّا", "وَمِمَّا", False),
+            self._word(4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
+        ]
+
+    # ── strict ────────────────────────────────────────────────────────
+
+    def test_strict_condemns_on_a_single_window(self):
+        mushaf, tracker = self._tracker("strict")
+        self._feed(tracker, self._mistake())
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    # ── confirmed ─────────────────────────────────────────────────────
+
+    def test_confirmed_withholds_until_a_second_window_agrees(self):
+        """One window is a look, not evidence."""
+        mushaf, tracker = self._tracker("confirmed")
+        self._feed(tracker, self._mistake())
+        self.assertIsNone(mushaf.final().get((8, 3, 3)),
+                          "condemned on a single observation")
+
+    def test_confirmed_condemns_once_a_second_window_agrees(self):
+        """And it must actually condemn — a level that never says anything
+        is not a strictness setting, it is the app switched off."""
+        mushaf, tracker = self._tracker("confirmed")
+        self._feed(tracker, self._mistake())
+        self._feed(tracker, self._mistake())
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_confirmed_forgives_no_letter_class(self):
+        """It asks for more evidence, never for a smaller mistake. The و/ف
+        substitution is still condemned once confirmed — which is why this
+        level can be the default and `words` cannot."""
+        mushaf, tracker = self._tracker("confirmed")
+        for _ in range(2):
+            self._feed(tracker, self._mistake())
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_a_correct_reading_still_outranks_any_number_of_wrong_ones(self):
+        """The evidence ordering is untouched: once a window has heard a word
+        correctly, later mis-hearings cannot take that away."""
+        mushaf, tracker = self._tracker("confirmed")
+        self._feed(tracker, self._mistake())
+        self._feed(tracker, [
+            self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+            self._word(3, "وَمِمَّا", "وَمِمَّا", True),
+        ])
+        self._feed(tracker, self._mistake())
+        self.assertIs(mushaf.final().get((8, 3, 3)), True)
+
+    def test_a_mistake_in_the_final_word_survives_the_confirmation_rule(self):
+        """The last word of a recitation is seen by fewer windows than any
+        other, by construction. If waiting for a second look applied there
+        too, every level above `strict` would silently drop the one mistake
+        the reciter most needs told — so a verdict committed on stop is
+        exempt, because no further window is ever coming."""
+        mushaf, tracker = self._tracker("confirmed")
+        self._feed(tracker, [
+            self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+            self._word(3, "فَمِمَّا", "وَمِمَّا", False),   # edge + wrong
+        ])
+        self.assertNotIn((8, 3, 3), mushaf.final())
+        tracker.finalize()
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    # ── words ─────────────────────────────────────────────────────────
+
+    def test_words_level_stops_catching_the_deliberate_mistake(self):
+        """Not a bug — the cost, asserted so it can never be forgotten.
+        فَمِمَّا/وَمِمَّا is one letter, and so is فَلَهُمْ/وَلَهُمْ."""
+        mushaf, tracker = self._tracker("words")
+        self._feed(tracker, self._mistake())
+        self.assertIsNone(mushaf.final().get((8, 3, 3)))
+
+    def test_words_level_still_catches_a_whole_wrong_word(self):
+        mushaf, tracker = self._tracker("words")
+        self._feed(tracker, [
+            self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+            self._word(3, "فُلَانٌ", "وَمِمَّا", False),
+            self._word(4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
+        ])
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    # ── follow ────────────────────────────────────────────────────────
+
+    def test_follow_never_paints_anything_red(self):
+        mushaf, tracker = self._tracker("follow")
+        for _ in range(5):
+            self._feed(tracker, [
+                self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+                self._word(3, "فُلَانٌ", "وَمِمَّا", False),
+                self._word(4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
+            ])
+        tracker.finalize()
+        self.assertNotIn(False, mushaf.final().values())
+
+    def test_follow_still_confirms_what_was_recited_correctly(self):
+        """Following along is not the same as showing nothing."""
+        mushaf, tracker = self._tracker("follow")
+        self._feed(tracker, [self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True)])
+        self.assertIs(mushaf.final().get((8, 3, 2)), True)
+
+    # ── the setting itself ────────────────────────────────────────────
+
+    def test_the_level_can_be_changed_mid_session_and_repaints(self):
+        """The point of putting it in reach is to try it on what is already
+        on the page, not only on words not yet recited."""
+        mushaf, tracker = self._tracker("confirmed")
+        self._feed(tracker, self._mistake())
+        self.assertIsNone(mushaf.final().get((8, 3, 3)))
+        tracker.set_strictness("strict")
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_strict_still_grades_diacritics(self):
+        """The near-miss this test exists for: `letter_distance` is measured
+        on the normalized skeleton, so a diacritics-only error is distance 0.
+        A minimum-distance gate applied unconditionally would therefore
+        switch off diacritic grading at *every* level, including strict, and
+        nothing about the app's stated behaviour would have said so."""
+        mushaf, tracker = self._tracker("strict")
+        self._feed(tracker, [
+            self._word(2, "الصَّلَاةَ", "الصَّلَاةَ", True),
+            self._word(3, "وَمِمُّا", "وَمِمَّا", False),   # same letters
+            self._word(4, "رَزَقْنَاهُمْ", "رَزَقْنَاهُمْ", True),
+        ])
+        self.assertIs(mushaf.final().get((8, 3, 3)), False)
+
+    def test_strict_is_exactly_the_behaviour_that_predates_strictness(self):
+        """Both of strict's thresholds are 1, and both gates are written to
+        be no-ops at 1. If either became "a gate that happens to pass", the
+        benchmark baseline would move and every recorded number would stop
+        being comparable."""
+        self.assertEqual(STRICTNESS_LEVELS["strict"],
+                         {"confirmations": 1, "min_letter_diff": 1,
+                          "paint_wrong": True})
+
+    def test_an_unknown_level_fails_loudly(self):
+        _mushaf, tracker = self._tracker("confirmed")
+        with self.assertRaises(ValueError):
+            tracker.set_strictness("lenient")
+
+    def test_the_configured_default_is_a_level_that_exists(self):
+        self.assertIn(STRICTNESS, STRICTNESS_LEVELS)
+
+    def test_every_level_declares_the_same_three_rules(self):
+        """A level that omits one would silently inherit whatever the code
+        happened to do — which is how a knob ends up connected to nothing."""
+        for name, rules in STRICTNESS_LEVELS.items():
+            with self.subTest(level=name):
+                self.assertEqual(set(rules),
+                                 {"confirmations", "min_letter_diff", "paint_wrong"})
 
 
 if __name__ == "__main__":
