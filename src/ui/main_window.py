@@ -35,10 +35,14 @@ class MainWindow(QMainWindow):
     # Signals
     _chunk_ready = pyqtSignal(object)
 
-    def __init__(self, record: bool = False):
+    def __init__(self, record: bool = False, engine: str | None = None):
         super().__init__()
         # --record: keep the audio and cut it up into benchmark cases on stop.
         self._record = record
+        # --engine: which speech engine to run. None means the configured
+        # default, which is Whisper — a second engine is always a choice
+        # somebody made, never a silent swap.
+        self._engine_name = engine
         self._recorder: SessionRecorder | None = None
         self.setWindowTitle("Hifz — Quran Recitation Trainer")
         self.setMinimumSize(800, 480)
@@ -171,13 +175,13 @@ class MainWindow(QMainWindow):
     # ── Model loading ──────────────────────────────────────────────────
 
     def _load_model(self):
-        self._loader = ModelLoaderThread()
+        self._loader = ModelLoaderThread(self._engine_name)
         self._loader.finished.connect(self._on_model_loaded)
         self._loader.error.connect(self._on_model_error)
         self._loader.start()
 
     def _on_model_loaded(self, processor, model):
-        log.event("MODEL", "whisper model loaded")
+        log.event("MODEL", f"{getattr(model, 'label', 'model')} loaded")
         self.processor = processor
         self.model = model
 

@@ -48,10 +48,23 @@ def main():
     if record:
         print("Recording this session → logs/session-*/")
 
-    window = MainWindow(record=record)
+    # --engine picks the speech engine (see src/audio/engines.py). Omitted,
+    # the app runs the configured default, which is Whisper.
+    engine = None
+    if "--engine" in sys.argv:
+        position = sys.argv.index("--engine") + 1
+        if position >= len(sys.argv):
+            from src.audio.engines import engine_choices
+            names = ", ".join(name for name, _, _ in engine_choices())
+            print(f"--engine needs a name. Available: {names}")
+            return 2
+        engine = sys.argv[position]
+        print(f"Engine: {engine}")
+
+    window = MainWindow(record=record, engine=engine)
     window.show()
-    sys.exit(app.exec())
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -15,7 +15,9 @@ Everything runs locally. No audio leaves the machine.
 ## Running it
 
 ```bash
-./run.sh
+./run.sh                          # Whisper, the tuned default
+./run.sh --record                 # also capture the session as test data
+./run.sh --engine ctc             # a second engine, once one is downloaded
 ```
 
 Press ▶, recite, press ■ when you are done.
