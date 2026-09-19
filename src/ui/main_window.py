@@ -24,6 +24,7 @@ from src.audio.capture import default_audio_format, get_input_device
 from src.audio.vad import SlidingWindowBuffer
 from src.audio import ModelLoaderThread, TranscriberWorker
 from src.core.quran import QuranIndex
+from src.core.debug import log
 from src.core.page_map import PageMap
 
 
@@ -170,6 +171,7 @@ class MainWindow(QMainWindow):
         self._loader.start()
 
     def _on_model_loaded(self, processor, model):
+        log.event("MODEL", "whisper model loaded")
         self.processor = processor
         self.model = model
 
@@ -186,6 +188,7 @@ class MainWindow(QMainWindow):
         self.listen_btn.setEnabled(True)
 
     def _on_model_error(self, msg: str):
+        log.event("ERROR", f"model load failed: {msg}")
         self._set_status(f"Model error: {msg}", "error")
 
     # ── Listening toggle ───────────────────────────────────────────────
@@ -221,6 +224,7 @@ class MainWindow(QMainWindow):
             self._set_status(f"Mic error: {e}", "error")
             return
 
+        log.event("SESSION", f"listening started (device={device.description()})")
         self._listening = True
         self.listen_btn.setText("■")
         self._set_btn_style(True)
@@ -249,6 +253,18 @@ class MainWindow(QMainWindow):
                     "context_word_index": self._tracker.last_word_index,
                 })
             self._chunk_detector = None
+
+        # Commit any verdicts that were waiting for a better audio window —
+        # otherwise a mistake in the final word is never shown.
+        html = self._tracker.finalize()
+        if html:
+            self.output_text.setHtml(html)
+
+        if log.enabled:
+            log.event("SESSION", "listening stopped")
+            log.summary()
+            self._set_status(f"Ready — log: {log.path}", "idle")
+            return
 
         self._set_status("Ready", "idle")
 
@@ -285,6 +301,7 @@ class MainWindow(QMainWindow):
         )
 
     def _on_worker_error(self, msg: str):
+        log.event("ERROR", f"worker: {msg}")
         self._set_status(f"Error: {msg}", "error")
 
     # ── Cleanup & Resize ───────────────────────────────────────────────
@@ -310,4 +327,5 @@ class MainWindow(QMainWindow):
         if self._worker_thread is not None:
             self._worker_thread.quit()
             self._worker_thread.wait()
+        log.close()
         super().closeEvent(event)

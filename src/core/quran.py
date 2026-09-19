@@ -8,12 +8,16 @@ Loads the full Quran text and provides:
 
 import json
 import difflib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.core.arabic import normalize
+from src.core.arabic import normalize, split_words
 from src.config import (
-    QURAN_JSON, DISCOVERY_MIN_WORDS, DISCOVERY_NGRAM_SIZES, TRACKING_WINDOW,
+    QURAN_JSON, DISCOVERY_MIN_WORDS, DISCOVERY_NGRAM_SIZES,
+    DISCOVERY_SHORT_NGRAM, DISCOVERY_SHORT_MAX_WORDS,
+    TRACKING_WINDOW, TRACKING_MAX_GAP, TRACKING_MIN_MATCHES,
+    TRACKING_WEAK_EVIDENCE, TRACKING_WEAK_MAX_DRIFT,
 )
 
 
@@ -26,6 +30,7 @@ class WordResult:
     surah_id: int | None = None
     ayah_id: int | None = None
     reference_index: int | None = None  # word position inside the ayah
+    is_gap_filled: bool = False  # reference word the reciter skipped over
 
 
 @dataclass
@@ -72,8 +77,9 @@ class QuranIndex:
             s_id = surah["id"]
             for verse in surah["verses"]:
                 a_id = verse["id"]
-                words = verse["text"].split()
-                for word_idx, w in enumerate(words):
+                # split_words() keeps word_idx aligned with the QCF Mushaf
+                # word positions used for on-page highlighting.
+                for word_idx, w in enumerate(split_words(verse["text"])):
                     norm = normalize(w)
                     if norm:
                         pos = len(self._flat)
@@ -100,9 +106,10 @@ class QuranIndex:
         Returns a match ONLY when the phrase uniquely identifies a single
         position in the Quran. Returns None if ambiguous or too few words.
         """
-        trans_words = transcription.split()
+        # Tokenized like the index, so "يا ايها" becomes the single word the
+        # Mushaf has. Keeps trans_words and trans_norm index-aligned too.
+        trans_words = split_words(transcription)
         trans_norm = [normalize(w) for w in trans_words]
-        trans_norm = [w for w in trans_norm if w]
 
         if len(trans_norm) < DISCOVERY_MIN_WORDS:
             return None
@@ -111,6 +118,11 @@ class QuranIndex:
         # (freshest/most recent words are most reliable)
         for n in DISCOVERY_NGRAM_SIZES:
             if len(trans_norm) < n:
+                continue
+
+            # Short n-grams are only trustworthy on short transcriptions —
+            # on a long noisy one they are an easy way to jump somewhere wrong.
+            if n <= DISCOVERY_SHORT_NGRAM and len(trans_norm) > DISCOVERY_SHORT_MAX_WORDS:
                 continue
 
             # Try multiple sliding positions from the tail
@@ -185,13 +197,9 @@ class QuranIndex:
         Searches ONLY within ±TRACKING_WINDOW words of the current pointer.
         Never does global search — if no local match, returns None.
         """
-        trans_words = transcription.split()
-        if len(trans_words) < 1:
-            return None
-
+        trans_words = split_words(transcription)
         trans_norm = [normalize(w) for w in trans_words]
-        trans_norm = [w for w in trans_norm if w]
-        if len(trans_norm) < 1:
+        if not trans_norm:
             return None
 
         # Find the flat index for current context position
@@ -217,14 +225,39 @@ class QuranIndex:
             return None
 
         match_count = sum(b.size for b in blocks)
-        if match_count < min(2, len(trans_norm) * 0.4):
+        if match_count < TRACKING_MIN_MATCHES:
             return None
 
-        # Compute best start position in flat array
-        best_start = window_start + blocks[0].b - blocks[0].a
-        best_start = max(0, best_start)
+        # Anchor on the LONGEST run of matching words, not the first one.
+        # Ayahs share opening words — 83:14 and 83:18 both start with كَلَّا —
+        # so anchoring on the first match lets a single common word drag the
+        # whole alignment onto the wrong ayah, and every following word is
+        # then compared against the wrong reference.
+        anchor = max(
+            (b for b in blocks if b.size > 0),
+            key=lambda b: (b.size, -b.a),
+            default=None,
+        )
+        if anchor is None:
+            return None
 
-        return self._build_match(best_start, trans_words)
+        best_start = max(0, window_start + anchor.b - anchor.a)
+
+        # A chunk full of mis-transcribed words may still align by coincidence
+        # somewhere in the window. Only trust a thin match if it lands where
+        # the reciter already was; otherwise it drags the pointer off course.
+        if (match_count <= TRACKING_WEAK_EVIDENCE
+                and abs(best_start - context_pos) > TRACKING_WEAK_MAX_DRIFT):
+            return None
+
+        # If the match starts ahead of the pointer, the reciter skipped words.
+        # Report them as gap-filled so the caller can mark them as missed and
+        # keep the pointer in sync instead of losing the position entirely.
+        gap_start = None
+        if context_pos < best_start <= context_pos + TRACKING_MAX_GAP:
+            gap_start = context_pos
+
+        return self._build_match(best_start, trans_words, gap_start=gap_start)
 
     def _find_context_pos(self, surah: int, ayah: int, word_index: int) -> int | None:
         """Find the flat index for a given surah/ayah/word position.
@@ -238,8 +271,17 @@ class QuranIndex:
 
     # ── Shared helpers ─────────────────────────────────────────────────
 
-    def _build_match(self, flat_pos: int, trans_words: list[str]) -> "VerseMatch | None":
-        """Build a VerseMatch from a flat position and transcription words."""
+    def _build_match(
+        self,
+        flat_pos: int,
+        trans_words: list[str],
+        gap_start: int | None = None,
+    ) -> "VerseMatch | None":
+        """Build a VerseMatch from a flat position and transcription words.
+
+        If `gap_start` is given, the reference words in [gap_start, flat_pos)
+        are prepended as gap-filled results — words the reciter skipped over.
+        """
         if flat_pos < 0 or flat_pos >= len(self._flat):
             return None
 
@@ -257,6 +299,22 @@ class QuranIndex:
 
         # Word-by-word comparison
         words = self._compare_words(trans_words, ref_data)
+
+        # Prepend skipped reference words, oldest first
+        if gap_start is not None and gap_start < flat_pos:
+            gap_words = []
+            for i in range(gap_start, flat_pos):
+                _, w, s_id, a_id, w_idx = self._flat[i]
+                gap_words.append(WordResult(
+                    recited="",
+                    reference=w,
+                    is_correct=False,
+                    surah_id=s_id,
+                    ayah_id=a_id,
+                    reference_index=w_idx,
+                    is_gap_filled=True,
+                ))
+            words = gap_words + words
 
         _, _, start_s_id, start_a_id, start_offset = self._flat[flat_pos]
         surah = self._surahs[start_s_id - 1]
@@ -367,50 +425,54 @@ class QuranIndex:
 
     @staticmethod
     def _to_imlai(word: str) -> str:
-        """Convert Uthmani word to comparable Imla'i form.
+        """Convert an Uthmani word to a form comparable with ASR output.
 
-        Keeps standard diacritics but normalizes Uthmani-specific marks
-        and canonicalizes combining character ordering via NFC.
+        Order matters here. Shadda and sukun are discarded either way, but
+        they sit *between* the characters the later rules try to match — the
+        reference spelling of لَّا is lam + fathah + shadda + alef, so a rule
+        looking for "fathah followed by alef" silently fails to fire while the
+        shadda is still in place. Everything that carries no vowel information
+        is therefore removed first, and the sequence rules run on a string
+        where the vowels really are adjacent.
         """
-        import re
         import unicodedata
 
         t = word
-        # ٱ (alef wasla) → ا
-        t = t.replace("\u0671", "\u0627")  # ٱ → ا
-        # آ (alef with maddah above) → ا
-        t = t.replace("\u0622", "\u0627")  # آ → ا
-        # ءَا (hamza + fathah + alef) -> ا
-        t = t.replace("\u0621\u064e\u0627", "\u0627") # ءَا -> ا
-        # ءٰ (hamza + dagger alef) -> ا
-        t = t.replace("\u0621\u064e\u0670", "\u0627") # ءٰ -> ا 
-        # Remove standalone maddah (may appear as combining mark)
-        t = t.replace("\u0653", "")
-        # ۡ (Uthmani small high dotless head of khah = sukun) → standard sukun
-        t = t.replace("\u06E1", "\u0652")  # ۡ → ْ
-        # ٰ (superscript alef / dagger alef) → remove
-        t = t.replace("\u0670", "")
-        
-        # Map Uthmani sequential/tajweed tanween to standard Imla'i tanween
-        t = t.replace("\u0656", "\u064D") # ٖ -> ٍ (Kasratan)
-        t = t.replace("\u0657", "\u064B") # ٗ -> ً (Fathatan)
-        t = t.replace("\u065E", "\u064C") # ٞ -> ٌ (Dammatan)
-        
-        # Remove silent/long alef after fathah (العَالَمِينَ → العَلَمِينَ)
-        t = re.sub("\u064E\u0627", "\u064E", t)  # فَا → فَ
-        # Remove Quranic annotation marks that Whisper won't produce
-        t = re.sub("[\u06D6-\u06E0\u06E2-\u06ED\u06DE]", "", t)
-        # Remove tatweel
-        t = t.replace("\u0640", "")
-        # ۜ and similar
-        t = re.sub("[\u06DC\u06DF]", "", t)
-        # Canonicalize combining character order (fixes fathah/shadda ordering)
+
+        # ── 1. Letters that are the same letter written differently ──────
+        t = t.replace("\u0671", "\u0627")  # ٱ alef wasla  → ا
+        t = t.replace("\u0622", "\u0627")  # آ alef maddah → ا
+        t = t.replace("\u0623", "\u0627")  # أ → ا  (Whisper places the
+        t = t.replace("\u0625", "\u0627")  # إ → ا   hamza seat unreliably)
+        t = t.replace("\u0640", "")         # tatweel
+
+        # ── 2. Marks that carry no vowel information ─────────────────────
+        # Dropped now rather than at the end, so the rules in step 3 see
+        # adjacent characters instead of ones separated by a shadda.
+        t = t.replace("\u06E1", "")          # ۡ Uthmani sukun
+        t = t.replace("\u0652", "")          # ْ sukun
+        t = t.replace("\u0651", "")          # ّ shadda
+        t = t.replace("\u0653", "")          # ٓ maddah
+        t = t.replace("\u0670", "")          # ٰ dagger alef
+        t = re.sub("[\u06D6-\u06E0\u06E2-\u06ED]", "", t)  # recitation marks
         t = unicodedata.normalize("NFC", t)
-        
-        # Strip Shadda and Sukun to ignore Tajweed-specific orthography differences
-        # Whisper often misses Shaddas or hallucinates Sukuns, and Tajweed rules 
-        # add/remove them dynamically. We still verify the core vowels.
-        t = t.replace("\u0651", "") # Shadda
-        t = t.replace("\u0652", "") # Sukun
-        
+
+        # ── 3. Spelling equivalences, on adjacent characters ─────────────
+        # Uthmani tanween variants → the standard forms Whisper emits
+        t = t.replace("\u0656", "\u064D")   # ٖ → ٍ
+        t = t.replace("\u0657", "\u064B")   # ٗ → ً
+        t = t.replace("\u065E", "\u064C")   # ٞ → ٌ
+
+        t = t.replace("\u0621\u064E\u0627", "\u0627")   # ءَا → ا
+        # أَأَنذَرْتَهُمْ and أَنذَرْتَهُمْ are the same word written two ways
+        t = re.sub("\u0627[\u064B-\u0650]*\u0627", "\u0627", t)
+        # Long alef after a fathah is the same sound as the fathah alone
+        t = re.sub("\u064E\u0627", "\u064E", t)
+
+        # ── 4. The ending depends on where the reciter stopped ───────────
+        # Stopping on a word (waqf) drops its case ending; continuing (wasl)
+        # pronounces it. Both are correct, and which one is heard depends on
+        # where the audio window cut. Tanween stays: it is part of the word.
+        t = re.sub("[\u064E\u064F\u0650]+$", "", t)
+
         return t

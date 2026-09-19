@@ -87,7 +87,48 @@ def normalize(text: str) -> str:
     t = t.replace(_TATWEEL, "")
     t = t.replace(_RUB_EL_HIZB, "")
     t = t.replace(_END_OF_AYAH, "")
+    # أَأَنذَرْتَهُمْ collapses to the same skeleton as أَنذَرْتَهُمْ. This has to
+    # happen here as well as in the diacritic comparison, or the two spellings
+    # never get aligned to each other and the word is scored as a substitution.
+    t = re.sub(_ALEF + "{2,}", _ALEF, t)
     # Normalize teh marbuta to heh for matching
     t = t.replace("\u0629", "\u0647")  # ة → ه
     t = t.replace("\u0649", "\u064A")  # ى → ي
     return t.strip()
+
+
+# ── Word segmentation ──────────────────────────────────────────────────
+# quran.json splits on spaces, but the QCF Mushaf data uses its own word
+# positions.  Two systematic differences make the two disagree:
+#   1. Standalone waqf/ornament marks (ۛ ۖ ۗ …) are separate tokens in
+#      quran.json but are not words on the page.
+#   2. The vocative يَا / وَيَا is written joined to the following word in
+#      Uthmani script, so the Mushaf counts it as one word, not two.
+# Aligning them here keeps the search index word positions identical to the
+# QCF `position` field, which is what the Mushaf highlighting is keyed on.
+
+_JOIN_PREFIXES = {"يا", "ويا", "ها"}
+
+
+def split_words(text: str) -> list[str]:
+    """Split Arabic text into words aligned with QCF Mushaf word positions.
+
+    Drops tokens that carry no letters (standalone waqf marks) and joins
+    the vocative particle to the word it precedes.
+
+    Used for both the reference verses and the transcription, so the two
+    tokenize identically — Whisper writes "يا ايها" as two tokens where the
+    Mushaf has one word.
+    """
+    tokens = [w for w in text.split() if normalize(w)]
+
+    words: list[str] = []
+    i = 0
+    while i < len(tokens):
+        if normalize(tokens[i]) in _JOIN_PREFIXES and i + 1 < len(tokens):
+            words.append(tokens[i] + tokens[i + 1])
+            i += 2
+        else:
+            words.append(tokens[i])
+            i += 1
+    return words

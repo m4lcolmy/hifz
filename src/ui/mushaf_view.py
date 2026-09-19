@@ -13,9 +13,10 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsSimpleTextIt
 from PyQt6.QtGui import QColor, QPen, QFont, QFontMetricsF, QPainter
 from PyQt6.QtCore import Qt, QRectF
 
+from src.core.debug import log
 from src.core.qcf_data import QCFDataLoader
 from src.config import QCF_FONT_SIZE, QCF_WORD_SPACING, QCF_LINE_SPACING
-from src.ui.style import CORRECT_COLOR, INCORRECT_COLOR, TEXT_PRIMARY, BG_SURFACE
+from src.ui.style import CORRECT_COLOR, INCORRECT_COLOR, MISSED_COLOR, TEXT_PRIMARY, BG_SURFACE
 
 
 class MushafView(QGraphicsView):
@@ -179,26 +180,40 @@ class MushafView(QGraphicsView):
         self.scene.setSceneRect(QRectF(0, 0, self._page_width, self._page_height))
         self.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
-    def update_recitation(self, surah: int, ayah: int, word_index: int, is_correct: bool):
+    def update_recitation(self, surah: int, ayah: int, word_index: int, status: bool | None):
         """Unmask and highlight a word based on recitation correctness.
 
-        word_index is 0-based from quran.py but QCF positions are 1-based.
-        We check both conventions for robustness.
+        `status` is True (correct), False (wrong) or None (skipped by the
+        reciter).  `word_index` is 0-based from quran.py; QCF word positions
+        are 1-based, so exactly one conversion is applied here.
         """
-        # QCF positions are 1-based; quran.py word_index is 0-based
-        keys_to_try = [
-            (surah, ayah, word_index),      # 0-based (from quran.py)
-            (surah, ayah, word_index + 1),  # 1-based (QCF convention)
-        ]
+        key = (surah, ayah, word_index + 1)
+        hitboxes = self._word_hitboxes.get(key)
 
-        for key in keys_to_try:
-            hitboxes = self._word_hitboxes.get(key)
+        if log.enabled:
             if hitboxes:
-                # Use semi-transparent version of theme colors
-                base_color = QColor(CORRECT_COLOR if is_correct else INCORRECT_COLOR)
-                color = QColor(base_color.red(), base_color.green(), base_color.blue(), 80)
-                for hitbox in hitboxes:
-                    hitbox.setBrush(color)
+                log.count("mushaf_hits")
+            elif any(k[0] == surah and k[1] == ayah for k in self._word_hitboxes):
+                # The ayah IS on this page but that word position is not —
+                # the index and the Mushaf disagree about word boundaries.
+                log.count("mushaf_misses")
+                log.mushaf(
+                    f"OFF-PAGE {surah}:{ayah} word {word_index} (qcf pos {word_index + 1}) "
+                    f"not found on page {self.current_page_num}"
+                )
+            # else: the ayah simply lives on another page — expected, not a bug.
+
+        if hitboxes:
+            if status is True:
+                base_color = QColor(CORRECT_COLOR)
+            elif status is False:
+                base_color = QColor(INCORRECT_COLOR)
+            else:
+                base_color = QColor(MISSED_COLOR)
+            # Semi-transparent tint so the glyph underneath stays readable
+            color = QColor(base_color.red(), base_color.green(), base_color.blue(), 80)
+            for hitbox in hitboxes:
+                hitbox.setBrush(color)
 
         # Also reveal the end-of-ayah marker when any word in that ayah is recited
         end_key = (surah, ayah, 0)

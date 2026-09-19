@@ -169,3 +169,14 @@ data/qcf_assets/
 .agents/
 .claude/
 skills-lock.json
+
+# Session logs (written on every run)
+logs/
+hifz-session.log
+*-session.log
+
+# Experimental model builds
+models-small/
+
+# Editor/tool artifacts
+.codex

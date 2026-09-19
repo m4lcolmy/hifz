@@ -15,11 +15,16 @@ os.environ["TRANSFORMERS_OFFLINE"] = "1"
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QLoggingCategory
 
+from src.core.debug import log, enable_from_env_or_args
 from src.ui.style import STYLESHEET, app_font
 from src.ui import MainWindow
 
 
 def main():
+    # Session log — on by default, silenced with --no-debug
+    if enable_from_env_or_args(sys.argv):
+        print(f"Session log → {log.path}")
+
     # Suppress warnings via QLoggingCategory
     QLoggingCategory.setFilterRules("*.warning=false")
     

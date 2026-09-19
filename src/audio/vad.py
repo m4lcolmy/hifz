@@ -8,8 +8,20 @@ continuously.
 import webrtcvad
 
 from src.config import (
-    SAMPLE_RATE, VAD_AGGRESSIVENESS, VAD_FRAME_MS,
+    SAMPLE_RATE, VAD_AGGRESSIVENESS, VAD_FRAME_MS, WINDOW_MS,
+    WINDOW_STEP_MS, WINDOW_STEP_MS_CPU, DEVICE,
 )
+from src.core.device import resolve_device
+
+
+def default_step_ms() -> int:
+    """Window step matched to how fast this machine can transcribe.
+
+    A smaller step means more overlapping looks at each word, which is what
+    lets a fragment verdict get corrected — but only if inference keeps up.
+    """
+    device, _ = resolve_device(DEVICE)
+    return WINDOW_STEP_MS if device == "cuda" else WINDOW_STEP_MS_CPU
 
 
 class SlidingWindowBuffer:
@@ -18,7 +30,9 @@ class SlidingWindowBuffer:
     # Bytes per VAD frame (16-bit = 2 bytes per sample)
     FRAME_BYTES = (SAMPLE_RATE * VAD_FRAME_MS // 1000) * 2
 
-    def __init__(self, window_ms=3000, step_ms=300):
+    def __init__(self, window_ms=WINDOW_MS, step_ms=None):
+        if step_ms is None:
+            step_ms = default_step_ms()
         self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
         self.window_bytes = (SAMPLE_RATE * window_ms // 1000) * 2
         self.step_bytes = (SAMPLE_RATE * step_ms // 1000) * 2

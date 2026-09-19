@@ -3,6 +3,8 @@
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.config import MODEL_DIR, DEVICE, USE_FP16
+from src.core.debug import log
+from src.core.device import resolve_device
 
 
 class ModelLoaderThread(QThread):
@@ -15,17 +17,14 @@ class ModelLoaderThread(QThread):
         try:
             from faster_whisper import WhisperModel
 
-            if DEVICE == "cpu":
-                compute_type = "int8"
-            else:
-                compute_type = "float16" if USE_FP16 else "float32"
-            
-            # Note: faster_whisper handles device and compute_type internally
+            device, compute_type = resolve_device(DEVICE, USE_FP16)
+            log.event("MODEL", f"loading on {device}/{compute_type}")
+
             model = WhisperModel(
-                MODEL_DIR, 
-                device=DEVICE, 
+                MODEL_DIR,
+                device=device,
                 compute_type=compute_type,
-                local_files_only=True
+                local_files_only=True,
             )
 
             # In faster_whisper, the model object handles both processing and generation

@@ -11,10 +11,67 @@ Mode-aware matching:
 import struct
 import queue
 import threading
+import time
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
-from src.config import MATCH_MIN_WORDS, DISCOVERY_MIN_WORDS
+from src.config import (
+    SAMPLE_RATE, ASR_BEAM_SIZE, ASR_VAD_FILTER, ASR_NO_SPEECH_THRESHOLD,
+    ASR_MIN_AVG_LOGPROB, ASR_MAX_COMPRESSION_RATIO,
+)
+from src.core.debug import log
+from src.core.matching import match_for_mode
+
+
+def transcribe_window(model, audio) -> str:
+    """Transcribe one audio window, dropping anything the model is unsure of.
+
+    Whisper hallucinates confidently on silence, so three gates are applied:
+    Silero VAD removes the silence before the model sees it, and any segment
+    that still comes back as probable-silence, low-confidence or degenerately
+    repetitive is discarded rather than fed to the matcher.
+    """
+    segments, _info = model.transcribe(
+        audio,
+        beam_size=ASR_BEAM_SIZE,
+        language="ar",
+        task="transcribe",
+        initial_prompt="Quran recitation, classical Arabic, Uthmani script",
+        vad_filter=ASR_VAD_FILTER,
+        no_speech_threshold=ASR_NO_SPEECH_THRESHOLD,
+        log_prob_threshold=ASR_MIN_AVG_LOGPROB,
+        compression_ratio_threshold=ASR_MAX_COMPRESSION_RATIO,
+        # Each window is independent; conditioning on the previous one makes
+        # the model repeat itself across overlapping windows.
+        condition_on_previous_text=False,
+    )
+
+    kept = []
+    for seg in segments:
+        if _rejected(seg):
+            continue
+        kept.append(seg.text)
+    return " ".join(kept).strip()
+
+
+def _rejected(seg) -> str | None:
+    """Return a reason to drop this segment, or None to keep it."""
+    no_speech = getattr(seg, "no_speech_prob", 0.0)
+    avg_logprob = getattr(seg, "avg_logprob", 0.0)
+    compression = getattr(seg, "compression_ratio", 0.0)
+
+    if no_speech > ASR_NO_SPEECH_THRESHOLD:
+        reason = f"silence (no_speech={no_speech:.2f})"
+    elif avg_logprob < ASR_MIN_AVG_LOGPROB:
+        reason = f"low confidence (avg_logprob={avg_logprob:.2f})"
+    elif compression > ASR_MAX_COMPRESSION_RATIO:
+        reason = f"degenerate (compression={compression:.2f})"
+    else:
+        return None
+
+    log.count("asr_rejected")
+    log.event("ASR", f'rejected "{seg.text.strip()}" — {reason}')
+    return reason
 
 
 class TranscriberWorker(QObject):
@@ -30,6 +87,7 @@ class TranscriberWorker(QObject):
         self.quran_index = quran_index
         
         # Threading for LIFO
+        self._chunk_index = 0
         self._queue = queue.LifoQueue()
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -55,13 +113,21 @@ class TranscriberWorker(QObject):
                     continue
                 
                 # Drain queue to drop stale overlapping frames
+                dropped = 0
                 while not self._queue.empty():
                     try:
                         fresher_data = self._queue.get_nowait()
                         if fresher_data is not None:
                             data = fresher_data
+                            dropped += 1
                     except queue.Empty:
                         break
+
+                self._chunk_index += 1
+                if log.enabled:
+                    log.audio_chunk(
+                        self._chunk_index, len(data["audio"]), SAMPLE_RATE, dropped
+                    )
 
                 self._transcribe_and_match(data)
             except queue.Empty:
@@ -81,38 +147,31 @@ class TranscriberWorker(QObject):
             samples = struct.unpack(f"<{n}h", audio_bytes[:n * 2])
             audio = np.array(samples, dtype=np.float32) / 32768.0
             
-            segments, info = self.model.transcribe(
-                audio,
-                beam_size=5,
-                language="ar",
-                task="transcribe",
-                initial_prompt="Quran recitation, classical Arabic, Uthmani script"
-            )
+            t_start = time.monotonic()
+            text = transcribe_window(self.model, audio)
+            latency_ms = (time.monotonic() - t_start) * 1000
 
-            text = " ".join([segment.text for segment in segments]).strip()
+            if log.enabled:
+                log.asr(text, latency_ms)
 
             if not text:
                 return
 
-            # Mode-aware Quran matching
-            words = text.split()
-            match = None
-
-            if self.quran_index is not None:
-                if mode == "tracking" and context_surah is not None and context_ayah is not None and context_word_index is not None:
-                    # Tracking: local search only, never global
-                    if len(words) >= MATCH_MIN_WORDS:
-                        match = self.quran_index.track(text, context_surah, context_ayah, context_word_index)
-                else:
-                    # Discovery: exact N-gram lookup, uniqueness gated
-                    if len(words) >= DISCOVERY_MIN_WORDS:
-                        match = self.quran_index.discover(text)
+            # Mode-aware Quran matching (shared with the offline benchmark)
+            context = (context_surah, context_ayah, context_word_index)
+            decision = match_for_mode(self.quran_index, text, mode, context)
+            log.match(decision.mode, context, decision.match, decision.skip_reason)
 
             self.result_ready.emit({
                 "text": text,
-                "match": match,
+                "match": decision.match,
                 "mode": mode,
+                # False when the chunk was too short to even try — the tracker
+                # must not count those towards its re-discovery fallback.
+                "attempted": decision.attempted,
             })
 
         except Exception as e:
+            log.count("asr_errors")
+            log.event("ERROR", f"transcribe/match failed: {e!r}")
             self.error.emit(str(e))
