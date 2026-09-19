@@ -448,6 +448,61 @@ before. Treat a disagreement as the thing to look at, not as a broken manifest.
 
 ---
 
+# Tier 3.5 — Coverage, and how sure "wrong" is
+
+*Proposed by Tier 3's numbers and by `logs/hifz-20260919-131925.log`. Not
+started. Both halves are measurable with what now exists.*
+
+### 3.5a — The 27 words never shown
+
+Coverage is 85.1%. The gaps, in order of how much they say:
+
+- **`surah ala 11`: position FOUND, zero words scored.** 87:11 is two words.
+  Finding where the reciter is and then showing nothing is the worst outcome
+  the app has, and it is in the corpus already.
+- **`surah mutaffifin 1-19`: 24 words, all of 83:15–17.** Those three ayahs
+  and 83:14/83:18 all open `كَلَّا`. The tracker went 83:14 → 83:18 directly.
+  The recorded clips show the jump plainly: `014_83-14_كلا.flac` is followed
+  by `015_83-18_كلا-ان-كتاب.flac`.
+- **`fatiha first 2 ayahs`: 1 word.**
+
+Gate: coverage up, false alarms and 2/2 no worse.
+
+### 3.5b — A verdict of "wrong" should need agreement
+
+An-Nisa 4:1–4:4, recited live, painted five words red. Counting every
+observation of each across all windows separates them cleanly:
+
+| word | observations | reading |
+|---|---|---|
+| `4:3:5 الْيَتَامَىٰ` → `يَتَامَى` | **5 of 6 windows identical** | real: the `ال` was dropped |
+| `4:2:14 حُوبًا` → `خُوبًا` | 7 of 19, plurality, ح→خ | real: makhraj slip |
+| `4:3:6 فَانكِحُوا` | **8 windows, 8 different answers** | the app does not know |
+| `4:1:16 وَنِسَاءً` | 13 windows, scattered, 3 say diacritics only | unclear |
+| `4:3:13 وَثُلَاثَ` | 12 windows, scattered | unclear |
+
+Two of those are the reciter's, and the app was right to flag them. The other
+three are painted with exactly the same confidence on evidence that contradicts
+itself. **Scatter is information the app throws away.** A word whose windows
+agree on the same wrong reading is a mistake; a word whose windows each say
+something different is a word we failed to hear.
+
+Work: key the wrong-verdict confirmation on the *recited string*, not just the
+count, and let a word with no agreement stay unpainted rather than red.
+`EDGE_CONFIRMATIONS` already does this for edge words — the same idea, applied
+everywhere.
+
+**Risk, and why it must be gated hard:** this makes the app slower to condemn,
+which is the direction that loses mistake detection. A real mistake is recited
+consistently, so agreement should be high — that is the whole bet, and the
+benchmark's 2/2 is the test of it. Revert if either deliberate mistake drops.
+
+### 3.5c — Do not lock onto the isti'adha
+
+Moved down from Tier 2 — it costs coverage, not just latency. See that tier.
+
+---
+
 # Tier 4 — Accuracy, from Tilawa
 
 *`/home/hashus/code/tilawa`, cloned and inspected. Each item is independently
